@@ -9,7 +9,7 @@ use env_logger::Builder;
 
 use distributed_file_system::{
     dfs::RegisterData,
-    host_info::{DataId, HostInfo},
+    host_info::{ChunkId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
 use dslab_core::{EventHandler, Id, Simulation};
@@ -56,20 +56,24 @@ impl SimpleReplicationStrategy {
 }
 
 impl ReplicationStrategy for SimpleReplicationStrategy {
-    fn register_data(
+    fn register_chunks(
         &mut self,
-        _size: u64,
+        _chunk_size: u64,
         _host: Id,
-        data_id: DataId,
+        chunks: &[ChunkId],
         _need_to_replicate: bool,
         host_info: &BTreeMap<Id, HostInfo>,
-    ) -> Vec<Id> {
-        let ids = host_info.keys().collect::<Vec<_>>();
-        let hosts = vec![
-            *ids[data_id as usize % ids.len()],
-            *ids[(data_id + 1) as usize % ids.len()],
-        ];
-        hosts
+    ) -> BTreeMap<ChunkId, Vec<Id>> {
+        let mut result = BTreeMap::new();
+        for &chunk_id in chunks.iter() {
+            let ids = host_info.keys().collect::<Vec<_>>();
+            let hosts = vec![
+                *ids[chunk_id as usize % ids.len()],
+                *ids[(chunk_id + 1) as usize % ids.len()],
+            ];
+            result.insert(chunk_id, hosts);
+        }
+        result
     }
 }
 
@@ -100,7 +104,7 @@ fn main() {
             data_on_host_id,
             HostInfo {
                 free_memory: 1000,
-                data: BTreeSet::new(),
+                chunks: BTreeSet::new(),
             },
         );
         network_rc.borrow_mut().set_location(data_on_host_id, &node_name);
@@ -112,6 +116,7 @@ fn main() {
         HashMap::new(),
         network_rc,
         Box::new(SimpleReplicationStrategy::new()),
+        16,
         sim.create_context("dfs"),
     );
     let dfs = Rc::new(RefCell::new(dfs));
@@ -131,6 +136,14 @@ fn main() {
     }
     sim.step_until_no_events();
     for i in 1..=10 {
-        println!("Data {i} is located on: {:?}", dfs.borrow().data_location(i));
+        let dfs = dfs.borrow();
+        let chunks = dfs.data_chunks(i).unwrap();
+        println!("Data {i} is split into chunks {chunks:?}");
+        for &chunk_id in chunks.iter() {
+            println!(
+                "    Chunk {chunk_id} is located on hosts {:?}",
+                dfs.chunks_location(chunk_id).unwrap()
+            );
+        }
     }
 }

@@ -10,32 +10,32 @@ use dslab_core::{cast, event::EventId, log_debug, Event, EventHandler, Id, Simul
 use dslab_network::{DataTransferCompleted, Network};
 
 use super::{
-    host_info::{DataId, HostInfo},
+    host_info::{ChunkId, DataId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
 
 struct ReplicationTask {
-    origin: Id,
-    targets: BTreeSet<Id>,
-    remove_from_origin: bool,
+    data_id: DataId,
+    targets: BTreeSet<(ChunkId, Id)>,
     requester_id: Id,
 }
 
-struct CopyDataTask {
-    data_id: DataId,
+struct CopyChunkTask {
+    chunk_id: ChunkId,
     requester_id: Id,
 }
 
 pub struct DistributedFileSystem {
     replication_strategy: Box<dyn ReplicationStrategy>,
-    data_location: HashMap<DataId, BTreeSet<Id>>,
-    data_size: HashMap<DataId, u64>,
+    chunk_size: u64,
+    chunks_location: HashMap<ChunkId, BTreeSet<Id>>,
+    data_chunks: HashMap<DataId, Vec<ChunkId>>,
     host_info: BTreeMap<Id, HostInfo>,
     replication_tasks: HashMap<u64, ReplicationTask>,
     next_task_id: u64,
-    waiting_for_data_on_host: HashMap<EventId, u64>,
-    waiting_for_remove_data: HashMap<EventId, u64>,
-    waiting_for_data_transfer: HashMap<usize, CopyDataTask>,
+    waiting_for_chunk_on_host: HashMap<EventId, u64>,
+    waiting_for_data_transfer: HashMap<usize, CopyChunkTask>,
+    next_chunk_id: ChunkId,
     network: Rc<RefCell<Network>>,
     ctx: SimulationContext,
 }
@@ -49,17 +49,24 @@ pub struct RegisterData {
 }
 
 #[derive(Clone, Serialize)]
-pub struct CopyData {
+pub struct UploadChunk {
     pub src: Id,
     pub dst: Id,
-    pub data_id: DataId,
+    pub chunk_id: ChunkId,
 }
 
 #[derive(Clone, Serialize)]
-pub struct CopiedData {
+pub struct CopyChunk {
     pub src: Id,
     pub dst: Id,
-    pub data_id: DataId,
+    pub chunk_id: ChunkId,
+}
+
+#[derive(Clone, Serialize)]
+pub struct CopiedChunk {
+    pub src: Id,
+    pub dst: Id,
+    pub chunk_id: ChunkId,
 }
 
 #[derive(Clone, Serialize)]
@@ -68,9 +75,9 @@ pub struct RegisteredData {
 }
 
 #[derive(Clone, Serialize)]
-pub struct EraseDataOnHost {
+pub struct EraseChunkOnHost {
     pub host: Id,
-    pub data_id: DataId,
+    pub chunk_id: ChunkId,
 }
 
 #[derive(Clone, Serialize)]
@@ -80,13 +87,13 @@ pub struct UnknownHost {
 
 #[derive(Clone, Serialize)]
 pub struct UnknownData {
-    pub data_id: DataId,
+    pub chunk_id: ChunkId,
 }
 
 #[derive(Clone, Serialize)]
-pub struct NoSuchDataOnHost {
+pub struct NoSuchChunkOnHost {
     pub host: Id,
-    pub data_id: DataId,
+    pub chunk_id: ChunkId,
 }
 
 #[derive(Clone, Serialize)]
@@ -94,6 +101,12 @@ pub struct NotEnoughMemory {
     pub host: Id,
     pub free_memory: u64,
     pub need_memory: u64,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ChunkAlreadyExists {
+    pub host: Id,
+    pub chunk_id: ChunkId,
 }
 
 impl EventHandler for DistributedFileSystem {
@@ -105,116 +118,107 @@ impl EventHandler for DistributedFileSystem {
                 data_id,
                 need_to_replicate,
             } => {
-                self.data_size.insert(data_id, size);
-                if !self.can_add_data(host, data_id, event.src) {
-                    return;
+                let chunks_count = (size + self.chunk_size - 1) / self.chunk_size;
+                let mut chunks = Vec::new();
+                for _ in 0..chunks_count {
+                    chunks.push(self.next_chunk_id);
+                    self.next_chunk_id += 1;
                 }
-                let mut target_hosts = self
-                    .replication_strategy
-                    .register_data(size, host, data_id, need_to_replicate, &self.host_info)
-                    .into_iter()
-                    .collect::<BTreeSet<_>>();
+                let target_hosts = self.replication_strategy.register_chunks(
+                    self.chunk_size,
+                    host,
+                    &chunks,
+                    need_to_replicate,
+                    &self.host_info,
+                );
                 log_debug!(
                     self.ctx,
-                    "registering data {} of size {} on host {} and replicating to {:?}",
+                    "registering data {} of size {} on host {} by splitting into chunks {:?} and replicating to {:?}",
                     data_id,
                     size,
                     host,
+                    chunks,
                     &target_hosts
                 );
-                self.data_location.entry(data_id).or_default().insert(host);
                 let host_info = self.host_info.get_mut(&host);
                 if host_info.is_none() {
                     self.ctx.emit_now(UnknownHost { host }, event.src);
                     return;
                 }
-                host_info.unwrap().data.insert(data_id);
-                let remove_from_origin = !target_hosts.remove(&host);
                 let task_id = self.next_task_id;
                 self.next_task_id += 1;
-                for &target_host in target_hosts.iter() {
-                    let event_id = self.ctx.emit_now(
-                        CopyData {
-                            src: host,
-                            dst: target_host,
-                            data_id,
-                        },
-                        self.ctx.id(),
-                    );
-                    self.waiting_for_data_on_host.insert(event_id, task_id);
+                for (&chunk_id, target_hosts) in target_hosts.iter() {
+                    for &target_host in target_hosts.iter() {
+                        let event_id = self.ctx.emit_now(
+                            UploadChunk {
+                                src: host,
+                                dst: target_host,
+                                chunk_id,
+                            },
+                            self.ctx.id(),
+                        );
+                        self.waiting_for_chunk_on_host.insert(event_id, task_id);
+                    }
                 }
+                self.data_chunks.insert(data_id, chunks.clone());
                 self.replication_tasks.insert(
                     task_id,
                     ReplicationTask {
-                        origin: host,
-                        targets: target_hosts,
-                        remove_from_origin,
+                        data_id,
+                        targets: target_hosts
+                            .into_iter()
+                            .flat_map(|(chunk_id, target_hosts)| {
+                                target_hosts.into_iter().map(move |host| (chunk_id, host))
+                            })
+                            .collect(),
                         requester_id: event.src,
                     },
                 );
             }
-            CopyData { src, dst, data_id } => {
-                if !self.data_exists(src, data_id, event.src) || !self.can_add_data(dst, data_id, event.src) {
+            CopyChunk { src, dst, chunk_id } => {
+                if !self.chunk_exists(src, chunk_id, event.src) || !self.can_add_chunk(dst, chunk_id, event.src) {
                     return;
                 }
-                log_debug!(self.ctx, "copying data {} from {} to {}", data_id, src, dst);
-                self.host_info.get_mut(&dst).unwrap().free_memory -= self.data_size[&data_id];
-                let transfer_id =
-                    self.network
-                        .borrow_mut()
-                        .transfer_data(src, dst, self.data_size[&data_id] as f64, self.ctx.id());
-                self.waiting_for_data_transfer.insert(
-                    transfer_id,
-                    CopyDataTask {
-                        data_id,
-                        requester_id: event.src,
-                    },
-                );
+                log_debug!(self.ctx, "copying chunk {} from {} to {}", chunk_id, src, dst);
+                self.copy_chunk(src, dst, chunk_id, event.src);
             }
-            CopiedData { src, dst, data_id } => {
-                log_debug!(self.ctx, "copied data {} from {} to {}", data_id, src, dst);
-                self.host_info.get_mut(&dst).unwrap().data.insert(data_id);
-                self.data_location.entry(data_id).or_default().insert(dst);
-                if let Some(task_id) = self.waiting_for_data_on_host.remove(&event.id) {
+            UploadChunk { src, dst, chunk_id } => {
+                if !self.can_add_chunk(dst, chunk_id, event.src) {
+                    return;
+                }
+                log_debug!(self.ctx, "uploading chunk {} from {} to {}", chunk_id, src, dst);
+                self.copy_chunk(src, dst, chunk_id, event.src);
+            }
+            CopiedChunk { src, dst, chunk_id, .. } => {
+                log_debug!(self.ctx, "copied chunk {} from {} to {}", chunk_id, src, dst);
+                self.host_info.get_mut(&dst).unwrap().chunks.insert(chunk_id);
+                self.chunks_location.entry(chunk_id).or_default().insert(dst);
+                if let Some(task_id) = self.waiting_for_chunk_on_host.remove(&event.id) {
                     let task = self.replication_tasks.get_mut(&task_id).unwrap();
-                    task.targets.remove(&dst);
+                    task.targets.remove(&(chunk_id, dst));
                     if task.targets.is_empty() {
-                        if task.remove_from_origin {
-                            let event_id = self.ctx.emit_now(
-                                EraseDataOnHost {
-                                    data_id,
-                                    host: task.origin,
-                                },
-                                self.ctx.id(),
-                            );
-                            self.waiting_for_remove_data.insert(event_id, task_id);
-                        } else {
-                            self.ctx.emit_now(RegisteredData { data_id }, task.requester_id);
-                            self.replication_tasks.remove(&task_id);
-                        }
+                        self.ctx
+                            .emit_now(RegisteredData { data_id: task.data_id }, task.requester_id);
+                        self.replication_tasks.remove(&task_id);
                     }
                 }
             }
-            EraseDataOnHost { host, data_id } => {
-                if !self.data_exists(host, data_id, event.src) {
+            EraseChunkOnHost { host, chunk_id } => {
+                if !self.chunk_exists(host, chunk_id, event.src) {
                     return;
                 }
-                log_debug!(self.ctx, "erasing data {} from {}", data_id, host);
-                self.host_info.get_mut(&host).unwrap().free_memory += self.data_size[&data_id];
-                self.host_info.get_mut(&host).unwrap().data.remove(&data_id);
-                if let Some(task_id) = self.waiting_for_remove_data.remove(&event.id) {
-                    let task = self.replication_tasks.get_mut(&task_id).unwrap();
-                    self.ctx.emit_now(RegisteredData { data_id }, task.requester_id);
-                    self.replication_tasks.remove(&task_id);
-                }
+                log_debug!(self.ctx, "erasing chunk {} from {}", chunk_id, host);
+                self.host_info.get_mut(&host).unwrap().free_memory += self.chunk_size;
+                self.host_info.get_mut(&host).unwrap().chunks.remove(&chunk_id);
+                self.chunks_location.get_mut(&chunk_id).unwrap().remove(&host);
             }
             DataTransferCompleted { dt } => {
                 if let Some(task) = self.waiting_for_data_transfer.remove(&dt.id) {
                     self.ctx.emit_now(
-                        CopiedData {
+                        CopiedChunk {
                             src: dt.src,
                             dst: dt.dst,
-                            data_id: task.data_id,
+                            chunk_id: task.chunk_id,
                         },
                         task.requester_id,
                     );
@@ -227,68 +231,86 @@ impl EventHandler for DistributedFileSystem {
 impl DistributedFileSystem {
     pub fn new(
         host_info: BTreeMap<Id, HostInfo>,
-        data_size: HashMap<DataId, u64>,
+        data_chunks: HashMap<DataId, Vec<ChunkId>>,
         network: Rc<RefCell<Network>>,
         replication_strategy: Box<dyn ReplicationStrategy>,
+        chunk_size: u64,
         ctx: SimulationContext,
     ) -> Self {
-        let mut data_location: HashMap<DataId, BTreeSet<Id>> = HashMap::new();
+        let mut chunks_location: HashMap<DataId, BTreeSet<Id>> = HashMap::new();
+        let mut next_chunk_id = 0;
         for (&host, host_info) in host_info.iter() {
-            for &data_id in host_info.data.iter() {
-                data_location.entry(data_id).or_default().insert(host);
+            for &chunk_id in host_info.chunks.iter() {
+                chunks_location.entry(chunk_id).or_default().insert(host);
+                next_chunk_id = next_chunk_id.max(chunk_id + 1);
             }
         }
         Self {
             replication_strategy,
-            data_location,
-            data_size,
+            chunk_size,
+            chunks_location,
+            data_chunks,
             host_info,
             replication_tasks: HashMap::new(),
             next_task_id: 0,
-            waiting_for_data_on_host: HashMap::new(),
-            waiting_for_remove_data: HashMap::new(),
+            waiting_for_chunk_on_host: HashMap::new(),
             waiting_for_data_transfer: HashMap::new(),
+            next_chunk_id,
             network,
             ctx,
         }
     }
 
-    pub fn data_location(&self, data_id: DataId) -> Option<&BTreeSet<Id>> {
-        self.data_location.get(&data_id)
+    pub fn data_chunks(&self, data_id: DataId) -> Option<&Vec<ChunkId>> {
+        self.data_chunks.get(&data_id)
     }
 
-    fn data_exists(&self, host: Id, data_id: DataId, notify_id: Id) -> bool {
+    pub fn chunks_location(&self, chunk_id: ChunkId) -> Option<&BTreeSet<Id>> {
+        self.chunks_location.get(&chunk_id)
+    }
+
+    fn chunk_exists(&self, host: Id, chunk_id: ChunkId, notify_id: Id) -> bool {
         if !self.host_info.contains_key(&host) {
             self.ctx.emit_now(UnknownHost { host }, notify_id);
             return false;
         }
-        if !self.host_info[&host].data.contains(&data_id) {
-            self.ctx.emit_now(NoSuchDataOnHost { host, data_id }, notify_id);
+        if !self.host_info[&host].chunks.contains(&chunk_id) {
+            self.ctx.emit_now(NoSuchChunkOnHost { host, chunk_id }, notify_id);
             return false;
         }
         true
     }
 
-    fn can_add_data(&self, host: Id, data_id: DataId, notify_id: Id) -> bool {
+    fn can_add_chunk(&self, host: Id, chunk_id: ChunkId, notify_id: Id) -> bool {
         if !self.host_info.contains_key(&host) {
             self.ctx.emit_now(UnknownHost { host }, notify_id);
             return false;
         }
-        if !self.data_size.contains_key(&data_id) {
-            self.ctx.emit_now(UnknownData { data_id }, notify_id);
+        if self.host_info[&host].chunks.contains(&chunk_id) {
+            self.ctx.emit_now(ChunkAlreadyExists { host, chunk_id }, notify_id);
             return false;
         }
-        if self.host_info[&host].free_memory < self.data_size[&data_id] {
+        if self.host_info[&host].free_memory < self.chunk_size {
             self.ctx.emit_now(
                 NotEnoughMemory {
                     host,
                     free_memory: self.host_info[&host].free_memory,
-                    need_memory: self.data_size[&data_id],
+                    need_memory: self.chunk_size,
                 },
                 notify_id,
             );
             return false;
         }
         true
+    }
+
+    fn copy_chunk(&mut self, src: Id, dst: Id, chunk_id: ChunkId, requester_id: Id) {
+        self.host_info.get_mut(&dst).unwrap().free_memory -= self.chunk_size;
+        let transfer_id = self
+            .network
+            .borrow_mut()
+            .transfer_data(src, dst, self.chunk_size as f64, self.ctx.id());
+        self.waiting_for_data_transfer
+            .insert(transfer_id, CopyChunkTask { chunk_id, requester_id });
     }
 }
