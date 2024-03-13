@@ -97,10 +97,10 @@ pub struct NoSuchChunkOnHost {
 }
 
 #[derive(Clone, Serialize)]
-pub struct NotEnoughMemory {
+pub struct NotEnoughSpace {
     pub host: Id,
-    pub free_memory: u64,
-    pub need_memory: u64,
+    pub free_space: u64,
+    pub need_space: u64,
 }
 
 #[derive(Clone, Serialize)]
@@ -208,7 +208,7 @@ impl EventHandler for DistributedFileSystem {
                     return;
                 }
                 log_debug!(self.ctx, "erasing chunk {} from {}", chunk_id, host);
-                self.host_info.get_mut(&host).unwrap().free_memory += self.chunk_size;
+                self.host_info.get_mut(&host).unwrap().free_space += self.chunk_size;
                 self.host_info.get_mut(&host).unwrap().chunks.remove(&chunk_id);
                 self.chunks_location.get_mut(&chunk_id).unwrap().remove(&host);
             }
@@ -290,12 +290,12 @@ impl DistributedFileSystem {
             self.ctx.emit_now(ChunkAlreadyExists { host, chunk_id }, notify_id);
             return false;
         }
-        if self.host_info[&host].free_memory < self.chunk_size {
+        if self.host_info[&host].free_space < self.chunk_size {
             self.ctx.emit_now(
-                NotEnoughMemory {
+                NotEnoughSpace {
                     host,
-                    free_memory: self.host_info[&host].free_memory,
-                    need_memory: self.chunk_size,
+                    free_space: self.host_info[&host].free_space,
+                    need_space: self.chunk_size,
                 },
                 notify_id,
             );
@@ -305,7 +305,7 @@ impl DistributedFileSystem {
     }
 
     fn copy_chunk(&mut self, src: Id, dst: Id, chunk_id: ChunkId, requester_id: Id) {
-        self.host_info.get_mut(&dst).unwrap().free_memory -= self.chunk_size;
+        self.host_info.get_mut(&dst).unwrap().free_space -= self.chunk_size;
         let transfer_id = self
             .network
             .borrow_mut()

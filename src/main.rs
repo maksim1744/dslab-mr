@@ -103,7 +103,7 @@ fn main() {
         hosts.insert(
             data_on_host_id,
             HostInfo {
-                free_memory: 1000,
+                free_space: 1000,
                 chunks: BTreeSet::new(),
             },
         );
