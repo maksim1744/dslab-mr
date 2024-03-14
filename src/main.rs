@@ -8,7 +8,6 @@ use std::{
 use env_logger::Builder;
 
 use distributed_file_system::{
-    dfs::RegisterData,
     host_info::{ChunkId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
@@ -17,10 +16,16 @@ use dslab_network::{
     models::{SharedBandwidthNetworkModel, TopologyAwareNetworkModel},
     Link, Network,
 };
+use map_reduce::{
+    map_reduce_params::{InitialDataLocation, MapOutput, MapReduceParams},
+    placement_strategy::{PlacementStrategy, TaskType},
+    runner::{ComputeHostInfo, MapReduceRunner, Start},
+};
 
 use crate::distributed_file_system::dfs::DistributedFileSystem;
 
 mod distributed_file_system;
+mod map_reduce;
 
 fn make_star_topology(network: &mut Network, host_count: usize) {
     let switch_name = "switch".to_string();
@@ -77,6 +82,81 @@ impl ReplicationStrategy for SimpleReplicationStrategy {
     }
 }
 
+struct SimpleMapReduceParams {
+    first_host: Id,
+}
+
+impl SimpleMapReduceParams {
+    fn new(first_host: Id) -> Self {
+        SimpleMapReduceParams { first_host }
+    }
+}
+
+impl MapReduceParams for SimpleMapReduceParams {
+    fn initial_data_location(&self) -> InitialDataLocation {
+        InitialDataLocation::ExistsOnHost {
+            host: self.first_host,
+            size: 256,
+        }
+    }
+
+    fn map_tasks_count(&self) -> u64 {
+        2
+    }
+
+    fn map_task_time(&self, task_id: u64, _input_size: u64) -> f64 {
+        300. + task_id as f64 * 50.
+    }
+
+    fn map_task_output(&self, _task_id: u64) -> Vec<MapOutput> {
+        (0..self.reduce_tasks_count())
+            .map(|i| MapOutput {
+                reducer_id: i,
+                size: 128,
+            })
+            .collect()
+    }
+
+    fn reduce_tasks_count(&self) -> u64 {
+        2
+    }
+
+    fn reduce_task_time(&self, task_id: u64, _input_size: u64) -> f64 {
+        100. + task_id as f64 * 10.
+    }
+
+    fn reduce_task_output(&self, _task_id: u64) -> u64 {
+        32
+    }
+}
+
+struct SimplePlacementStrategy {}
+
+impl PlacementStrategy for SimplePlacementStrategy {
+    fn assign_chunks(&mut self, chunks: &[ChunkId], map_tasks_count: u64) -> BTreeMap<ChunkId, u64> {
+        chunks
+            .iter()
+            .copied()
+            .map(|chunk_id| (chunk_id, chunk_id % map_tasks_count))
+            .collect()
+    }
+
+    fn place_task(
+        &mut self,
+        task_type: TaskType,
+        task_id: u64,
+        _input_chunks: &[ChunkId],
+        _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
+        host_info: &BTreeMap<Id, HostInfo>,
+    ) -> Id {
+        let hosts = host_info.keys().copied().collect::<Vec<_>>();
+        match task_type {
+            TaskType::Map => hosts[task_id as usize % hosts.len()],
+            TaskType::Reduce => hosts[(task_id as usize + hosts.len() / 2) % hosts.len()],
+        }
+    }
+}
+
 fn main() {
     Builder::from_default_env()
         .format(|buf, record| writeln!(buf, "{}", record.args()))
@@ -85,7 +165,7 @@ fn main() {
     let mut sim = Simulation::new(123);
 
     let mut network = Network::new(Box::new(TopologyAwareNetworkModel::new()), sim.create_context("net"));
-    make_star_topology(&mut network, 3);
+    make_star_topology(&mut network, 5);
     network.init_topology();
     let network_rc = Rc::new(RefCell::new(network));
     sim.add_handler("net", network_rc.clone());
@@ -103,7 +183,7 @@ fn main() {
         hosts.insert(
             data_on_host_id,
             HostInfo {
-                free_space: 1000,
+                free_space: 1024,
                 chunks: BTreeSet::new(),
             },
         );
@@ -114,36 +194,28 @@ fn main() {
     let dfs = DistributedFileSystem::new(
         hosts,
         HashMap::new(),
-        network_rc,
+        network_rc.clone(),
         Box::new(SimpleReplicationStrategy::new()),
         16,
         sim.create_context("dfs"),
     );
     let dfs = Rc::new(RefCell::new(dfs));
-    let dfs_id = sim.add_handler("dfs", dfs.clone());
+    sim.add_handler("dfs", dfs.clone());
     let root = sim.create_context("root");
-    for i in 1..=10 {
-        root.emit(
-            RegisterData {
-                size: i * 10,
-                host: host_ids[i as usize % host_ids.len()],
-                data_id: i,
-                need_to_replicate: false,
-            },
-            dfs_id,
-            i as f64,
-        );
-    }
+
+    let runner = Rc::new(RefCell::new(MapReduceRunner::new(
+        Box::new(SimpleMapReduceParams::new(host_ids[0])),
+        Box::new(SimplePlacementStrategy {}),
+        host_ids
+            .iter()
+            .map(|&host_id| (host_id, ComputeHostInfo { available_slots: 4 }))
+            .collect(),
+        dfs.clone(),
+        network_rc.clone(),
+        sim.create_context("runner"),
+    )));
+    let runner_id = sim.add_handler("runner", runner.clone());
+
+    root.emit_now(Start {}, runner_id);
     sim.step_until_no_events();
-    for i in 1..=10 {
-        let dfs = dfs.borrow();
-        let chunks = dfs.data_chunks(i).unwrap();
-        println!("Data {i} is split into chunks {chunks:?}");
-        for &chunk_id in chunks.iter() {
-            println!(
-                "    Chunk {chunk_id} is located on hosts {:?}",
-                dfs.chunks_location(chunk_id).unwrap()
-            );
-        }
-    }
 }

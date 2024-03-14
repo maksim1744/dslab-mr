@@ -6,7 +6,7 @@ use std::{
 
 use serde::Serialize;
 
-use dslab_core::{cast, event::EventId, log_debug, Event, EventHandler, Id, SimulationContext};
+use dslab_core::{cast, log_debug, Event, EventHandler, Id, SimulationContext};
 use dslab_network::{DataTransferCompleted, Network};
 
 use super::{
@@ -33,7 +33,7 @@ pub struct DistributedFileSystem {
     host_info: BTreeMap<Id, HostInfo>,
     replication_tasks: HashMap<u64, ReplicationTask>,
     next_task_id: u64,
-    waiting_for_chunk_on_host: HashMap<EventId, u64>,
+    waiting_for_chunk_on_host: HashMap<(ChunkId, Id), Vec<u64>>,
     waiting_for_data_transfer: HashMap<usize, CopyChunkTask>,
     next_chunk_id: ChunkId,
     network: Rc<RefCell<Network>>,
@@ -149,7 +149,7 @@ impl EventHandler for DistributedFileSystem {
                 self.next_task_id += 1;
                 for (&chunk_id, target_hosts) in target_hosts.iter() {
                     for &target_host in target_hosts.iter() {
-                        let event_id = self.ctx.emit_now(
+                        self.ctx.emit_now(
                             UploadChunk {
                                 src: host,
                                 dst: target_host,
@@ -157,7 +157,10 @@ impl EventHandler for DistributedFileSystem {
                             },
                             self.ctx.id(),
                         );
-                        self.waiting_for_chunk_on_host.insert(event_id, task_id);
+                        self.waiting_for_chunk_on_host
+                            .entry((chunk_id, target_host))
+                            .or_default()
+                            .push(task_id);
                     }
                 }
                 self.data_chunks.insert(data_id, chunks.clone());
@@ -189,11 +192,16 @@ impl EventHandler for DistributedFileSystem {
                 log_debug!(self.ctx, "uploading chunk {} from {} to {}", chunk_id, src, dst);
                 self.copy_chunk(src, dst, chunk_id, event.src);
             }
-            CopiedChunk { src, dst, chunk_id, .. } => {
+            CopiedChunk { src, dst, chunk_id } => {
                 log_debug!(self.ctx, "copied chunk {} from {} to {}", chunk_id, src, dst);
                 self.host_info.get_mut(&dst).unwrap().chunks.insert(chunk_id);
                 self.chunks_location.entry(chunk_id).or_default().insert(dst);
-                if let Some(task_id) = self.waiting_for_chunk_on_host.remove(&event.id) {
+                for &task_id in self
+                    .waiting_for_chunk_on_host
+                    .remove(&(chunk_id, dst))
+                    .iter()
+                    .flat_map(|x| x.iter())
+                {
                     let task = self.replication_tasks.get_mut(&task_id).unwrap();
                     task.targets.remove(&(chunk_id, dst));
                     if task.targets.is_empty() {
@@ -261,12 +269,33 @@ impl DistributedFileSystem {
         }
     }
 
+    pub fn id(&self) -> Id {
+        self.ctx.id()
+    }
+
     pub fn data_chunks(&self, data_id: DataId) -> Option<&Vec<ChunkId>> {
         self.data_chunks.get(&data_id)
     }
 
-    pub fn chunks_location(&self, chunk_id: ChunkId) -> Option<&BTreeSet<Id>> {
+    pub fn datas_chunks(&self) -> &HashMap<DataId, Vec<ChunkId>> {
+        &self.data_chunks
+    }
+
+    pub fn chunks_location(&self) -> &HashMap<ChunkId, BTreeSet<Id>> {
+        &self.chunks_location
+    }
+
+    #[allow(unused)]
+    pub fn chunk_location(&self, chunk_id: ChunkId) -> Option<&BTreeSet<Id>> {
         self.chunks_location.get(&chunk_id)
+    }
+
+    pub fn hosts_info(&self) -> &BTreeMap<Id, HostInfo> {
+        &self.host_info
+    }
+
+    pub fn chunk_size(&self) -> u64 {
+        self.chunk_size
     }
 
     fn chunk_exists(&self, host: Id, chunk_id: ChunkId, notify_id: Id) -> bool {
