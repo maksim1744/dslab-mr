@@ -14,13 +14,8 @@ use crate::distributed_file_system::{
 };
 
 use super::{
-    map_reduce_params::MapReduceParams,
-    placement_strategy::{PlacementStrategy, TaskType},
+    compute_host_info::ComputeHostInfo, map_reduce_params::MapReduceParams, placement_strategy::PlacementStrategy,
 };
-
-pub struct ComputeHostInfo {
-    pub available_slots: usize,
-}
 
 pub struct InputWaitingMapTask {
     waiting_for_chunks: HashSet<ChunkId>,
@@ -140,46 +135,57 @@ impl MapReduceRunner {
 
     fn start_map(&mut self) {
         let dfs = self.dfs.borrow();
-        let chunks = dfs.data_chunks(self.initial_data_id).unwrap();
-        let assigned_chunks = self
-            .placement_strategy
-            .assign_chunks(chunks, self.params.map_tasks_count());
-        if assigned_chunks.len() != chunks.len()
-            || !chunks.iter().all(|chunk_id| assigned_chunks.contains_key(chunk_id))
-        {
+        let mut chunks = dfs.data_chunks(self.initial_data_id).unwrap().clone();
+        chunks.sort();
+        let map_tasks_count = self.params.map_tasks_count();
+        let map_tasks_placement = self.placement_strategy.place_map_tasks(
+            map_tasks_count,
+            &chunks,
+            dfs.chunks_location(),
+            dfs.hosts_info(),
+            &self.compute_host_info,
+        );
+        if map_tasks_placement.len() != map_tasks_count as usize {
             log_error!(
                 self.ctx,
-                "placement strategy must assign all chunks: {:?}, assigned: {:?}",
-                chunks,
-                assigned_chunks
+                "placement strategy must place all tasks (total {}), placed: {:?}",
+                map_tasks_count,
+                map_tasks_placement,
             );
             return;
         }
-        let mut chunks_by_task: BTreeMap<u64, Vec<ChunkId>> = BTreeMap::new();
-        for (chunk_id, task_id) in assigned_chunks {
-            chunks_by_task.entry(task_id).or_default().push(chunk_id);
+        let mut assigned_chunks = map_tasks_placement
+            .iter()
+            .flat_map(|task_placement| task_placement.chunks.iter().copied())
+            .collect::<Vec<_>>();
+        assigned_chunks.sort();
+        if chunks != assigned_chunks {
+            log_error!(
+                self.ctx,
+                "placement strategy must assign all chunks: {:?}, placed: {:?}, placement: {:?}",
+                chunks,
+                assigned_chunks,
+                map_tasks_placement,
+            );
+            return;
         }
         self.map_tasks_left = 0;
-        for map_task in 0..self.params.map_tasks_count() {
+        for (map_task, placement) in map_tasks_placement.into_iter().enumerate() {
+            let map_task = map_task as u64;
             self.map_tasks_left += 1;
-            let host = self.placement_strategy.place_task(
-                TaskType::Map,
-                map_task,
-                chunks_by_task.get(&map_task).unwrap_or(&Vec::new()),
-                dfs.chunks_location(),
-                dfs.hosts_info(),
-            );
-            if !self.compute_host_info.contains_key(&host) {
-                log_error!(self.ctx, "can't place task on host {} since it doesn't exist", host);
+            if !self.compute_host_info.contains_key(&placement.host) {
+                log_error!(
+                    self.ctx,
+                    "can't place task on host {} since it doesn't exist",
+                    placement.host
+                );
             }
-            self.map_input_size.insert(
-                map_task,
-                chunks_by_task.get(&map_task).unwrap().len() as u64 * self.dfs.borrow().chunk_size(),
-            );
+            self.map_input_size
+                .insert(map_task, placement.chunks.len() as u64 * self.dfs.borrow().chunk_size());
             self.map_queues
-                .entry(host)
+                .entry(placement.host)
                 .or_default()
-                .push_back((map_task, chunks_by_task.get(&map_task).cloned().unwrap_or_default()));
+                .push_back((map_task, placement.chunks));
         }
         drop(dfs);
         let hosts = self.map_queues.keys().copied().collect::<Vec<_>>();
@@ -324,12 +330,12 @@ impl EventHandler for MapReduceRunner {
                     }
                     let reduce_task = self.reduce_tasks.get(&reduce_task_id).unwrap();
                     if self.is_reduce_phase() && reduce_task.registering_datas.is_empty() {
-                        let host = self.placement_strategy.place_task(
-                            TaskType::Reduce,
+                        let host = self.placement_strategy.place_reduce_task(
                             reduce_task_id,
                             &reduce_task.registered_chunks.iter().copied().collect::<Vec<_>>(),
                             self.dfs.borrow().chunks_location(),
                             self.dfs.borrow().hosts_info(),
+                            &self.compute_host_info,
                         );
                         self.reduce_queues.entry(host).or_default().push_back(reduce_task_id);
                         self.process_reduce_queue(host);

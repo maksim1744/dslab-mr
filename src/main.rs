@@ -17,9 +17,10 @@ use dslab_network::{
     Link, Network,
 };
 use map_reduce::{
+    compute_host_info::ComputeHostInfo,
     map_reduce_params::{MapOutput, MapReduceParams},
-    placement_strategy::{PlacementStrategy, TaskType},
-    runner::{ComputeHostInfo, InitialDataLocation, MapReduceRunner, Start},
+    placement_strategy::{MapTaskPlacement, PlacementStrategy},
+    runner::{InitialDataLocation, MapReduceRunner, Start},
 };
 
 use crate::distributed_file_system::dfs::DistributedFileSystem;
@@ -118,27 +119,38 @@ impl MapReduceParams for SimpleMapReduceParams {
 struct SimplePlacementStrategy {}
 
 impl PlacementStrategy for SimplePlacementStrategy {
-    fn assign_chunks(&mut self, chunks: &[ChunkId], map_tasks_count: u64) -> BTreeMap<ChunkId, u64> {
-        chunks
-            .iter()
-            .copied()
-            .map(|chunk_id| (chunk_id, chunk_id % map_tasks_count))
-            .collect()
+    fn place_map_tasks(
+        &mut self,
+        task_count: u64,
+        input_chunks: &[ChunkId],
+        _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
+        host_info: &BTreeMap<Id, HostInfo>,
+        _compute_host_info: &BTreeMap<Id, map_reduce::compute_host_info::ComputeHostInfo>,
+    ) -> Vec<map_reduce::placement_strategy::MapTaskPlacement> {
+        let hosts = host_info.keys().copied().collect::<Vec<_>>();
+        let mut result = (0..task_count)
+            .map(|task_id| MapTaskPlacement {
+                host: hosts[task_id as usize % hosts.len()],
+                chunks: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        for (i, &chunk_id) in input_chunks.iter().enumerate() {
+            let target_task = i % result.len();
+            result[target_task].chunks.push(chunk_id);
+        }
+        result
     }
 
-    fn place_task(
+    fn place_reduce_task(
         &mut self,
-        task_type: TaskType,
         task_id: u64,
         _input_chunks: &[ChunkId],
         _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
         host_info: &BTreeMap<Id, HostInfo>,
+        _compute_host_info: &BTreeMap<Id, map_reduce::compute_host_info::ComputeHostInfo>,
     ) -> Id {
         let hosts = host_info.keys().copied().collect::<Vec<_>>();
-        match task_type {
-            TaskType::Map => hosts[task_id as usize % hosts.len()],
-            TaskType::Reduce => hosts[(task_id as usize + hosts.len() / 2) % hosts.len()],
-        }
+        hosts[(task_id as usize + hosts.len() / 2) % hosts.len()]
     }
 }
 
