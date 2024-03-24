@@ -63,6 +63,7 @@ pub struct MapReduceRunner {
     next_data_id: DataId,
     initial_data_id: DataId,
     chunk_by_transfer_id: HashMap<usize, ChunkId>,
+    map_input_size: HashMap<u64, u64>,
     map_queues: BTreeMap<Id, VecDeque<(u64, Vec<ChunkId>)>>,
     map_tasks_waiting_for_input: HashMap<usize, Rc<RefCell<InputWaitingMapTask>>>,
     map_tasks_left: u64,
@@ -103,6 +104,7 @@ impl MapReduceRunner {
             next_data_id,
             initial_data_id: DataId::MAX,
             chunk_by_transfer_id: HashMap::new(),
+            map_input_size: HashMap::new(),
             map_queues: BTreeMap::new(),
             map_tasks_waiting_for_input: HashMap::new(),
             map_tasks_left: u64::MAX,
@@ -155,6 +157,10 @@ impl MapReduceRunner {
             if !self.compute_host_info.contains_key(&host) {
                 log_error!(self.ctx, "can't place task on host {} since it doesn't exist", host);
             }
+            self.map_input_size.insert(
+                map_task,
+                chunks_by_task.get(&map_task).unwrap().len() as u64 * self.dfs.borrow().chunk_size(),
+            );
             self.map_queues
                 .entry(host)
                 .or_default()
@@ -371,7 +377,7 @@ impl EventHandler for MapReduceRunner {
             }
             MapTaskCompleted { task_id, host } => {
                 log_debug!(self.ctx, "map task {} completed on host {}", task_id, host);
-                for output in self.params.map_task_output(task_id) {
+                for output in self.params.map_task_output(task_id, self.map_input_size[&task_id]) {
                     let data_id = self.next_data_id;
                     self.next_data_id += 1;
                     self.ctx.emit_now(
@@ -410,7 +416,10 @@ impl EventHandler for MapReduceRunner {
                 self.next_data_id += 1;
                 self.ctx.emit_now(
                     RegisterData {
-                        size: self.params.reduce_task_output(task_id),
+                        size: self.params.reduce_task_output(
+                            task_id,
+                            self.reduce_tasks[&task_id].registered_chunks.len() as u64 * self.dfs.borrow().chunk_size(),
+                        ),
                         host,
                         data_id,
                         need_to_replicate: true,

@@ -108,7 +108,7 @@ impl MapReduceParams for SimpleMapReduceParams {
         300. + task_id as f64 * 50.
     }
 
-    fn map_task_output(&self, _task_id: u64) -> Vec<MapOutput> {
+    fn map_task_output(&self, _task_id: u64, _input_size: u64) -> Vec<MapOutput> {
         (0..self.reduce_tasks_count())
             .map(|i| MapOutput {
                 reducer_id: i,
@@ -125,7 +125,7 @@ impl MapReduceParams for SimpleMapReduceParams {
         100. + task_id as f64 * 10.
     }
 
-    fn reduce_task_output(&self, _task_id: u64) -> u64 {
+    fn reduce_task_output(&self, _task_id: u64, _input_size: u64) -> u64 {
         32
     }
 }

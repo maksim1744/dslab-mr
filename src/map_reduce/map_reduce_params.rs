@@ -25,9 +25,9 @@ pub trait MapReduceParams {
 
     fn map_tasks_count(&self) -> u64;
     fn map_task_time(&self, task_id: u64, input_size: u64) -> f64;
-    fn map_task_output(&self, task_id: u64) -> Vec<MapOutput>;
+    fn map_task_output(&self, task_id: u64, input_size: u64) -> Vec<MapOutput>;
 
     fn reduce_tasks_count(&self) -> u64;
     fn reduce_task_time(&self, task_id: u64, input_size: u64) -> f64;
-    fn reduce_task_output(&self, task_id: u64) -> u64;
+    fn reduce_task_output(&self, task_id: u64, input_size: u64) -> u64;
 }
