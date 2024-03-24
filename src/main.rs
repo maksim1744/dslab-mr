@@ -17,9 +17,9 @@ use dslab_network::{
     Link, Network,
 };
 use map_reduce::{
-    map_reduce_params::{InitialDataLocation, MapOutput, MapReduceParams},
+    map_reduce_params::{MapOutput, MapReduceParams},
     placement_strategy::{PlacementStrategy, TaskType},
-    runner::{ComputeHostInfo, MapReduceRunner, Start},
+    runner::{ComputeHostInfo, InitialDataLocation, MapReduceRunner, Start},
 };
 
 use crate::distributed_file_system::dfs::DistributedFileSystem;
@@ -82,24 +82,9 @@ impl ReplicationStrategy for SimpleReplicationStrategy {
     }
 }
 
-struct SimpleMapReduceParams {
-    first_host: Id,
-}
-
-impl SimpleMapReduceParams {
-    fn new(first_host: Id) -> Self {
-        SimpleMapReduceParams { first_host }
-    }
-}
+struct SimpleMapReduceParams {}
 
 impl MapReduceParams for SimpleMapReduceParams {
-    fn initial_data_location(&self) -> InitialDataLocation {
-        InitialDataLocation::ExistsOnHost {
-            host: self.first_host,
-            size: 256,
-        }
-    }
-
     fn map_tasks_count(&self) -> u64 {
         2
     }
@@ -204,12 +189,16 @@ fn main() {
     let root = sim.create_context("root");
 
     let runner = Rc::new(RefCell::new(MapReduceRunner::new(
-        Box::new(SimpleMapReduceParams::new(host_ids[0])),
+        Box::new(SimpleMapReduceParams {}),
         Box::new(SimplePlacementStrategy {}),
         host_ids
             .iter()
             .map(|&host_id| (host_id, ComputeHostInfo { available_slots: 4 }))
             .collect(),
+        InitialDataLocation::ExistsOnHost {
+            host: host_ids[0],
+            size: 256,
+        },
         dfs.clone(),
         network_rc.clone(),
         sim.create_context("runner"),

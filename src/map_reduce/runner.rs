@@ -14,7 +14,7 @@ use crate::distributed_file_system::{
 };
 
 use super::{
-    map_reduce_params::{InitialDataLocation, MapReduceParams},
+    map_reduce_params::MapReduceParams,
     placement_strategy::{PlacementStrategy, TaskType},
 };
 
@@ -32,6 +32,18 @@ pub struct InputWaitingReduceTask {
     registering_datas: HashSet<DataId>,
     registered_chunks: BTreeSet<ChunkId>,
     received_chunks: HashSet<ChunkId>,
+}
+
+#[derive(Debug)]
+pub enum InitialDataLocation {
+    #[allow(unused)]
+    UploadedToDFS {
+        data_id: DataId,
+    },
+    ExistsOnHost {
+        host: Id,
+        size: u64,
+    },
 }
 
 #[derive(Clone, Serialize)]
@@ -58,6 +70,7 @@ pub struct MapReduceRunner {
     params: Box<dyn MapReduceParams>,
     placement_strategy: Box<dyn PlacementStrategy>,
     compute_host_info: BTreeMap<Id, ComputeHostInfo>,
+    initial_data: InitialDataLocation,
     dfs: Rc<RefCell<DistributedFileSystem>>,
     network: Rc<RefCell<Network>>,
     next_data_id: DataId,
@@ -82,6 +95,7 @@ impl MapReduceRunner {
         params: Box<dyn MapReduceParams>,
         placement_strategy: Box<dyn PlacementStrategy>,
         compute_host_info: BTreeMap<Id, ComputeHostInfo>,
+        initial_data: InitialDataLocation,
         dfs: Rc<RefCell<DistributedFileSystem>>,
         network: Rc<RefCell<Network>>,
         ctx: SimulationContext,
@@ -99,6 +113,7 @@ impl MapReduceRunner {
             params,
             placement_strategy,
             compute_host_info,
+            initial_data,
             dfs,
             network,
             next_data_id,
@@ -257,7 +272,7 @@ impl MapReduceRunner {
     }
 
     fn place_initial_data(&mut self) {
-        match self.params.initial_data_location() {
+        match self.initial_data {
             InitialDataLocation::UploadedToDFS { data_id } => {
                 self.initial_data_id = data_id;
                 self.ctx
