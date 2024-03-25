@@ -1,10 +1,10 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     rc::Rc,
 };
 
-use dslab_core::{cast, log_debug, log_error, log_info, Event, EventHandler, Id, SimulationContext};
+use dslab_core::{cast, log_debug, log_error, log_info, log_warn, Event, EventHandler, Id, SimulationContext};
 use dslab_network::{DataTransferCompleted, Network};
 use serde::Serialize;
 
@@ -14,7 +14,8 @@ use crate::distributed_file_system::{
 };
 
 use super::{
-    compute_host_info::ComputeHostInfo, map_reduce_params::MapReduceParams, placement_strategy::PlacementStrategy,
+    compute_host_info::ComputeHostInfo, data_item::DataItem, map_reduce_params::MapReduceParams,
+    placement_strategy::PlacementStrategy,
 };
 
 pub struct InputWaitingMapTask {
@@ -24,9 +25,14 @@ pub struct InputWaitingMapTask {
 }
 
 pub struct InputWaitingReduceTask {
-    registering_datas: HashSet<DataId>,
-    registered_chunks: BTreeSet<ChunkId>,
-    received_chunks: HashSet<ChunkId>,
+    input_data_items: Vec<DataItem>,
+    received_data_items: usize,
+}
+
+impl InputWaitingReduceTask {
+    fn input_size(&self) -> u64 {
+        self.input_data_items.iter().map(|data_item| data_item.size()).sum()
+    }
 }
 
 #[derive(Debug)]
@@ -77,7 +83,6 @@ pub struct MapReduceRunner {
     map_tasks_left: u64,
     reduce_queues: BTreeMap<Id, VecDeque<u64>>,
     reduce_tasks: HashMap<u64, InputWaitingReduceTask>,
-    reduce_tasks_waiting_for_data_register: HashMap<DataId, u64>,
     reduce_tasks_waiting_for_input: HashMap<usize, u64>,
     reduce_tasks_left: u64,
     reduce_uploads_left: u64,
@@ -120,7 +125,6 @@ impl MapReduceRunner {
             map_tasks_left: u64::MAX,
             reduce_queues: BTreeMap::new(),
             reduce_tasks: HashMap::new(),
-            reduce_tasks_waiting_for_data_register: HashMap::new(),
             reduce_tasks_waiting_for_input: HashMap::new(),
             reduce_tasks_left,
             reduce_uploads_left,
@@ -221,7 +225,22 @@ impl MapReduceRunner {
     }
 
     fn start_reduce(&mut self) {
-        let hosts = self.map_queues.keys().copied().collect::<Vec<_>>();
+        for (&task_id, task) in self.reduce_tasks.iter() {
+            self.reduce_queues
+                .entry(self.placement_strategy.place_reduce_task(
+                    task_id,
+                    &task.input_data_items,
+                    self.dfs.borrow().datas_chunks(),
+                    self.dfs.borrow().chunks_location(),
+                    self.dfs.borrow().hosts_info(),
+                    &self.compute_host_info,
+                ))
+                .or_default()
+                .push_back(task_id);
+        }
+        let hosts = self.reduce_queues.keys().copied().collect::<Vec<_>>();
+        eprintln!("{:?}", self.reduce_queues);
+        eprintln!("{:?}", hosts);
         for &host in hosts.iter() {
             self.process_reduce_queue(host);
         }
@@ -237,14 +256,33 @@ impl MapReduceRunner {
         {
             self.compute_host_info.get_mut(&host).unwrap().available_slots -= 1;
             let task_id = self.reduce_queues.get_mut(&host).unwrap().pop_front().unwrap();
-            let chunks = self.reduce_tasks[&task_id]
-                .registered_chunks
-                .iter()
-                .copied()
-                .collect::<Vec<_>>();
-            let transfers = self.start_download_inputs(host, &chunks);
-            for transfer in transfers {
-                self.reduce_tasks_waiting_for_input.insert(transfer, task_id);
+            eprintln!("{}", task_id);
+            for data_item in self.reduce_tasks[&task_id].input_data_items.iter() {
+                match *data_item {
+                    DataItem::Local {
+                        size,
+                        host: source_host,
+                    } => {
+                        let transfer_id =
+                            self.network
+                                .borrow_mut()
+                                .transfer_data(source_host, host, size as f64, self.ctx.id());
+                        self.reduce_tasks_waiting_for_input.insert(transfer_id, task_id);
+                    }
+                    DataItem::Replicated { data_id, .. } => {
+                        for &chunk_id in self.dfs.borrow().data_chunks(data_id).unwrap() {
+                            let source_host = self.closest_host_with_chunk(host, chunk_id).unwrap();
+                            let transfer_id = self.network.borrow_mut().transfer_data(
+                                source_host,
+                                host,
+                                self.dfs.borrow().chunk_size() as f64,
+                                self.ctx.id(),
+                            );
+                            self.chunk_by_transfer_id.insert(transfer_id, chunk_id);
+                            self.reduce_tasks_waiting_for_input.insert(transfer_id, task_id);
+                        }
+                    }
+                }
             }
         }
     }
@@ -299,10 +337,6 @@ impl MapReduceRunner {
             }
         }
     }
-
-    fn is_reduce_phase(&self) -> bool {
-        self.map_tasks_left == 0
-    }
 }
 
 impl EventHandler for MapReduceRunner {
@@ -316,30 +350,6 @@ impl EventHandler for MapReduceRunner {
                     log_debug!(self.ctx, "registered initial data: {}", data_id);
                     self.ctx
                         .emit_now(InitialDataPlacementCompleted { data_id }, self.ctx.id());
-                } else if let Some(reduce_task_id) = self.reduce_tasks_waiting_for_data_register.remove(&data_id) {
-                    log_debug!(
-                        self.ctx,
-                        "registered data {} for reduce task {}",
-                        data_id,
-                        reduce_task_id
-                    );
-                    let reduce_task = self.reduce_tasks.get_mut(&reduce_task_id).unwrap();
-                    reduce_task.registering_datas.remove(&data_id);
-                    for &chunk_id in self.dfs.borrow().data_chunks(data_id).unwrap() {
-                        reduce_task.registered_chunks.insert(chunk_id);
-                    }
-                    let reduce_task = self.reduce_tasks.get(&reduce_task_id).unwrap();
-                    if self.is_reduce_phase() && reduce_task.registering_datas.is_empty() {
-                        let host = self.placement_strategy.place_reduce_task(
-                            reduce_task_id,
-                            &reduce_task.registered_chunks.iter().copied().collect::<Vec<_>>(),
-                            self.dfs.borrow().chunks_location(),
-                            self.dfs.borrow().hosts_info(),
-                            &self.compute_host_info,
-                        );
-                        self.reduce_queues.entry(host).or_default().push_back(reduce_task_id);
-                        self.process_reduce_queue(host);
-                    }
                 } else if self.reduce_outputs.contains(&data_id) {
                     log_debug!(self.ctx, "registered reduce output {}", data_id);
                     self.reduce_uploads_left -= 1;
@@ -347,7 +357,7 @@ impl EventHandler for MapReduceRunner {
                         log_info!(self.ctx, "map reduce completed");
                     }
                 } else {
-                    log_debug!(self.ctx, "registered unknown data {}", data_id);
+                    log_warn!(self.ctx, "registered unknown data {}", data_id);
                 }
             }
             InitialDataPlacementCompleted { .. } => {
@@ -376,22 +386,13 @@ impl EventHandler for MapReduceRunner {
                     }
                 } else if let Some(task_id) = self.reduce_tasks_waiting_for_input.remove(&dt.id) {
                     let task = self.reduce_tasks.get_mut(&task_id).unwrap();
-                    let chunk_id = self.chunk_by_transfer_id.remove(&dt.id).unwrap();
-                    log_debug!(
-                        self.ctx,
-                        "received input chunk {} for reduce task {}",
-                        chunk_id,
-                        task_id
-                    );
-                    task.received_chunks.insert(chunk_id);
-                    if task.received_chunks.len() == task.registered_chunks.len() {
+                    log_debug!(self.ctx, "received input data_item for reduce task {}", task_id);
+                    task.received_data_items += 1;
+                    if task.received_data_items == task.input_data_items.len() {
                         self.ctx.emit(
                             ReduceTaskCompleted { task_id, host: dt.dst },
                             self.ctx.id(),
-                            self.params.reduce_task_time(
-                                task_id,
-                                task.received_chunks.len() as u64 * self.dfs.borrow().chunk_size(),
-                            ),
+                            self.params.reduce_task_time(task_id, task.input_size()),
                         );
                     }
                 }
@@ -399,28 +400,17 @@ impl EventHandler for MapReduceRunner {
             MapTaskCompleted { task_id, host } => {
                 log_debug!(self.ctx, "map task {} completed on host {}", task_id, host);
                 for output in self.params.map_task_output(task_id, self.map_input_size[&task_id]) {
-                    let data_id = self.next_data_id;
-                    self.next_data_id += 1;
-                    self.ctx.emit_now(
-                        RegisterData {
-                            size: output.size,
-                            host,
-                            data_id,
-                            need_to_replicate: true,
-                        },
-                        self.dfs.borrow().id(),
-                    );
                     let reduce_task =
                         self.reduce_tasks
                             .entry(output.reducer_id)
                             .or_insert_with(|| InputWaitingReduceTask {
-                                registering_datas: HashSet::new(),
-                                registered_chunks: BTreeSet::new(),
-                                received_chunks: HashSet::new(),
+                                input_data_items: Vec::new(),
+                                received_data_items: 0,
                             });
-                    reduce_task.registering_datas.insert(data_id);
-                    self.reduce_tasks_waiting_for_data_register
-                        .insert(data_id, output.reducer_id);
+                    reduce_task.input_data_items.push(DataItem::Local {
+                        size: output.size,
+                        host,
+                    });
                 }
 
                 self.compute_host_info.get_mut(&host).unwrap().available_slots += 1;
@@ -437,10 +427,9 @@ impl EventHandler for MapReduceRunner {
                 self.next_data_id += 1;
                 self.ctx.emit_now(
                     RegisterData {
-                        size: self.params.reduce_task_output(
-                            task_id,
-                            self.reduce_tasks[&task_id].registered_chunks.len() as u64 * self.dfs.borrow().chunk_size(),
-                        ),
+                        size: self
+                            .params
+                            .reduce_task_output(task_id, self.reduce_tasks[&task_id].input_size()),
                         host,
                         data_id,
                         need_to_replicate: true,

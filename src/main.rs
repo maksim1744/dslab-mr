@@ -8,7 +8,7 @@ use std::{
 use env_logger::Builder;
 
 use distributed_file_system::{
-    host_info::{ChunkId, HostInfo},
+    host_info::{ChunkId, DataId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
 use dslab_core::{EventHandler, Id, Simulation};
@@ -18,6 +18,7 @@ use dslab_network::{
 };
 use map_reduce::{
     compute_host_info::ComputeHostInfo,
+    data_item::DataItem,
     map_reduce_params::{MapOutput, MapReduceParams},
     placement_strategy::{MapTaskPlacement, PlacementStrategy},
     runner::{InitialDataLocation, MapReduceRunner, Start},
@@ -144,7 +145,8 @@ impl PlacementStrategy for SimplePlacementStrategy {
     fn place_reduce_task(
         &mut self,
         task_id: u64,
-        _input_chunks: &[ChunkId],
+        _input_data_items: &[DataItem],
+        _data_chunks: &HashMap<DataId, Vec<ChunkId>>,
         _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
         host_info: &BTreeMap<Id, HostInfo>,
         _compute_host_info: &BTreeMap<Id, map_reduce::compute_host_info::ComputeHostInfo>,
