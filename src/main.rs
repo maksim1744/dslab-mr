@@ -127,6 +127,7 @@ impl PlacementStrategy for SimplePlacementStrategy {
         _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
         host_info: &BTreeMap<Id, HostInfo>,
         _compute_host_info: &BTreeMap<Id, map_reduce::compute_host_info::ComputeHostInfo>,
+        _network: &Network,
     ) -> Vec<map_reduce::placement_strategy::MapTaskPlacement> {
         let hosts = host_info.keys().copied().collect::<Vec<_>>();
         let mut result = (0..task_count)
@@ -150,6 +151,7 @@ impl PlacementStrategy for SimplePlacementStrategy {
         _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
         host_info: &BTreeMap<Id, HostInfo>,
         _compute_host_info: &BTreeMap<Id, map_reduce::compute_host_info::ComputeHostInfo>,
+        _network: &Network,
     ) -> Id {
         let hosts = host_info.keys().copied().collect::<Vec<_>>();
         hosts[(task_id as usize + hosts.len() / 2) % hosts.len()]
@@ -164,31 +166,34 @@ fn main() {
     let mut sim = Simulation::new(123);
 
     let mut network = Network::new(Box::new(TopologyAwareNetworkModel::new()), sim.create_context("net"));
-    make_star_topology(&mut network, 5);
+    make_star_topology(&mut network, 3);
     network.init_topology();
     let network_rc = Rc::new(RefCell::new(network));
     sim.add_handler("net", network_rc.clone());
 
     let mut hosts: BTreeMap<Id, HostInfo> = BTreeMap::new();
     let nodes = network_rc.borrow_mut().get_nodes();
+    let mut actor_ids = Vec::new();
     for node_name in nodes {
         if !node_name.starts_with("host_") {
             continue;
         }
-        let data_on_host_name = format!("data_on_host_{}", &node_name[5..]);
-        sim.create_context(&data_on_host_name);
-        let data_on_host = DataOnHost::new();
-        let data_on_host_id = sim.add_handler(data_on_host_name, Rc::new(RefCell::new(data_on_host)));
-        hosts.insert(
-            data_on_host_id,
-            HostInfo {
-                free_space: 1024,
-                chunks: BTreeSet::new(),
-            },
-        );
-        network_rc.borrow_mut().set_location(data_on_host_id, &node_name);
+        for actor in 0..2 {
+            let data_on_host_name = format!("data_on_host_{}_{}", &node_name[5..], actor);
+            sim.create_context(&data_on_host_name);
+            let data_on_host = DataOnHost::new();
+            let data_on_host_id = sim.add_handler(data_on_host_name, Rc::new(RefCell::new(data_on_host)));
+            hosts.insert(
+                data_on_host_id,
+                HostInfo {
+                    free_space: 1024,
+                    chunks: BTreeSet::new(),
+                },
+            );
+            network_rc.borrow_mut().set_location(data_on_host_id, &node_name);
+            actor_ids.push(data_on_host_id);
+        }
     }
-    let host_ids = hosts.keys().copied().collect::<Vec<_>>();
 
     let dfs = DistributedFileSystem::new(
         hosts,
@@ -205,12 +210,12 @@ fn main() {
     let runner = Rc::new(RefCell::new(MapReduceRunner::new(
         Box::new(SimpleMapReduceParams {}),
         Box::new(SimplePlacementStrategy {}),
-        host_ids
+        actor_ids
             .iter()
-            .map(|&host_id| (host_id, ComputeHostInfo { available_slots: 4 }))
+            .map(|&actor_id| (actor_id, ComputeHostInfo { available_slots: 4 }))
             .collect(),
         InitialDataLocation::ExistsOnHost {
-            host: host_ids[0],
+            host: actor_ids[0],
             size: 256,
         },
         dfs.clone(),

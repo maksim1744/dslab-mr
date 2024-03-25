@@ -148,6 +148,7 @@ impl MapReduceRunner {
             dfs.chunks_location(),
             dfs.hosts_info(),
             &self.compute_host_info,
+            &self.network.borrow(),
         );
         if map_tasks_placement.len() != map_tasks_count as usize {
             log_error!(
@@ -234,6 +235,7 @@ impl MapReduceRunner {
                     self.dfs.borrow().chunks_location(),
                     self.dfs.borrow().hosts_info(),
                     &self.compute_host_info,
+                    &self.network.borrow(),
                 ))
                 .or_default()
                 .push_back(task_id);
