@@ -8,7 +8,8 @@ use std::{
 use env_logger::Builder;
 
 use distributed_file_system::{
-    host_info::{ChunkId, DataId, HostInfo},
+    dfs::RegisterData,
+    host_info::{ChunkId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
 use dslab_core::{EventHandler, Id, Simulation};
@@ -16,18 +17,18 @@ use dslab_network::{
     models::{SharedBandwidthNetworkModel, TopologyAwareNetworkModel},
     Link, Network,
 };
-use map_reduce::{
+use spark::{
     compute_host_info::ComputeHostInfo,
     data_item::DataItem,
-    map_reduce_params::{MapOutput, MapReduceParams},
-    placement_strategy::{MapTaskPlacement, PlacementStrategy},
-    runner::{InitialDataLocation, MapReduceRunner, Start},
+    graph::{Graph, SimpleTask, Stage, Task, UniformShuffle},
+    placement_strategy::{PlacementStrategy, TaskPlacement},
+    runner::{SparkRunner, Start},
 };
 
 use crate::distributed_file_system::dfs::DistributedFileSystem;
 
 mod distributed_file_system;
-mod map_reduce;
+mod spark;
 
 fn make_star_topology(network: &mut Network, host_count: usize) {
     let switch_name = "switch".to_string();
@@ -84,77 +85,45 @@ impl ReplicationStrategy for SimpleReplicationStrategy {
     }
 }
 
-struct SimpleMapReduceParams {}
-
-impl MapReduceParams for SimpleMapReduceParams {
-    fn map_tasks_count(&self) -> u64 {
-        2
-    }
-
-    fn map_task_time(&self, task_id: u64, _input_size: u64) -> f64 {
-        300. + task_id as f64 * 50.
-    }
-
-    fn map_task_output(&self, _task_id: u64, _input_size: u64) -> Vec<MapOutput> {
-        (0..self.reduce_tasks_count())
-            .map(|i| MapOutput {
-                reducer_id: i,
-                size: 128,
-            })
-            .collect()
-    }
-
-    fn reduce_tasks_count(&self) -> u64 {
-        2
-    }
-
-    fn reduce_task_time(&self, task_id: u64, _input_size: u64) -> f64 {
-        100. + task_id as f64 * 10.
-    }
-
-    fn reduce_task_output(&self, _task_id: u64, _input_size: u64) -> u64 {
-        32
-    }
-}
-
 struct SimplePlacementStrategy {}
 
 impl PlacementStrategy for SimplePlacementStrategy {
-    fn place_map_tasks(
+    fn place_stage(
         &mut self,
-        task_count: u64,
-        input_chunks: &[ChunkId],
-        _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
-        host_info: &BTreeMap<Id, HostInfo>,
-        _compute_host_info: &BTreeMap<Id, map_reduce::compute_host_info::ComputeHostInfo>,
+        stage: &Stage,
+        _graph: &Graph,
+        input_data: &[DataItem],
+        _input_data_shuffled: &[Vec<DataItem>],
+        dfs: &DistributedFileSystem,
+        _compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
         _network: &Network,
-    ) -> Vec<map_reduce::placement_strategy::MapTaskPlacement> {
-        let hosts = host_info.keys().copied().collect::<Vec<_>>();
-        let mut result = (0..task_count)
-            .map(|task_id| MapTaskPlacement {
+    ) -> Vec<TaskPlacement> {
+        let mut my_data_items = Vec::new();
+        for &data_item in input_data.iter() {
+            match data_item {
+                DataItem::Chunk { .. } | DataItem::Local { .. } => my_data_items.push(data_item),
+                DataItem::Replicated { data_id, .. } => {
+                    for &chunk_id in dfs.data_chunks(data_id).unwrap() {
+                        my_data_items.push(DataItem::Chunk {
+                            size: dfs.chunk_size(),
+                            chunk_id,
+                        });
+                    }
+                }
+            }
+        }
+        let hosts = dfs.hosts_info().keys().copied().collect::<Vec<_>>();
+        let mut result = (0..stage.tasks().len())
+            .map(|task_id| TaskPlacement {
                 host: hosts[task_id as usize % hosts.len()],
-                chunks: Vec::new(),
+                input: Vec::new(),
             })
             .collect::<Vec<_>>();
-        for (i, &chunk_id) in input_chunks.iter().enumerate() {
+        for (i, &chunk_id) in my_data_items.iter().enumerate() {
             let target_task = i % result.len();
-            result[target_task].chunks.push(chunk_id);
+            result[target_task].input.push(chunk_id);
         }
         result
-    }
-
-    fn place_reduce_task(
-        &mut self,
-        task_id: u64,
-        _input_data_items: &[DataItem],
-        _data_chunks: &HashMap<DataId, Vec<ChunkId>>,
-        _chunks_location: &HashMap<ChunkId, BTreeSet<Id>>,
-        host_info: &BTreeMap<Id, HostInfo>,
-        _compute_host_info: &BTreeMap<Id, map_reduce::compute_host_info::ComputeHostInfo>,
-        _network: &Network,
-    ) -> Id {
-        let hosts = host_info.keys().copied().collect::<Vec<_>>();
-        hosts[(task_id as usize + hosts.len() / 2) % hosts.len()]
     }
 }
 
@@ -195,6 +164,22 @@ fn main() {
         }
     }
 
+    let mut graph = Graph::new();
+    graph.add_stage(
+        (0..2)
+            .map(|task_id| Box::new(SimpleTask::new(task_id, 300. + task_id as f64 * 50., 2.)) as Box<dyn Task>)
+            .collect(),
+        false,
+    );
+    graph.add_stage(
+        (0..2)
+            .map(|task_id| Box::new(SimpleTask::new(task_id, 100. + task_id as f64 * 10., 0.1)) as Box<dyn Task>)
+            .collect(),
+        true,
+    );
+    graph.add_connection(0, 1, Some(Box::new(UniformShuffle {})));
+
+    let first_host = *hosts.keys().next().unwrap();
     let dfs = DistributedFileSystem::new(
         hosts,
         HashMap::new(),
@@ -204,20 +189,30 @@ fn main() {
         sim.create_context("dfs"),
     );
     let dfs = Rc::new(RefCell::new(dfs));
-    sim.add_handler("dfs", dfs.clone());
+    let dfs_id = sim.add_handler("dfs", dfs.clone());
     let root = sim.create_context("root");
 
-    let runner = Rc::new(RefCell::new(MapReduceRunner::new(
-        Box::new(SimpleMapReduceParams {}),
+    root.emit_now(
+        RegisterData {
+            size: 256,
+            host: first_host,
+            data_id: 0,
+            need_to_replicate: true,
+        },
+        dfs_id,
+    );
+    sim.step_until_no_events();
+
+    let runner = Rc::new(RefCell::new(SparkRunner::new(
+        graph,
         Box::new(SimplePlacementStrategy {}),
         actor_ids
             .iter()
             .map(|&actor_id| (actor_id, ComputeHostInfo { available_slots: 4 }))
             .collect(),
-        InitialDataLocation::ExistsOnHost {
-            host: actor_ids[0],
-            size: 256,
-        },
+        [(0, vec![DataItem::Replicated { size: 256, data_id: 0 }])]
+            .into_iter()
+            .collect(),
         dfs.clone(),
         network_rc.clone(),
         sim.create_context("runner"),
