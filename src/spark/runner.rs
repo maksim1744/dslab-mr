@@ -38,6 +38,7 @@ pub struct TaskCompleted {
     host: Id,
 }
 
+#[derive(Debug)]
 pub struct RunningTask {
     stage_id: usize,
     task_id: usize,
@@ -116,8 +117,9 @@ impl SparkRunner {
     }
 
     fn start_stage(&mut self, stage_id: usize) {
+        log_debug!(self.ctx, "starting stage {}", stage_id);
         if self.stage_input.get(&stage_id).is_none() && self.stage_input_shuffled.get(&stage_id).is_none() {
-            log_error!(self.ctx, "No input found for stage {}", stage_id);
+            log_error!(self.ctx, "no input found for stage {}", stage_id);
             return;
         }
         self.graph.mark_started(stage_id);
@@ -132,8 +134,8 @@ impl SparkRunner {
         let task_placements = self.placement_strategy.place_stage(
             self.graph.stage(stage_id),
             &self.graph,
-            &self.stage_input.get(&stage_id).unwrap_or(&Vec::new()),
-            &self.stage_input_shuffled.get(&stage_id).unwrap_or(&Vec::new()),
+            self.stage_input.get(&stage_id).unwrap_or(&Vec::new()),
+            self.stage_input_shuffled.get(&stage_id).unwrap_or(&Vec::new()),
             &self.dfs.borrow(),
             &self.compute_host_info,
             &self.network.borrow(),
@@ -148,6 +150,7 @@ impl SparkRunner {
                     placement.host
                 );
             }
+            log_debug!(self.ctx, "placing task {} on host {}", task_id, placement.host);
             self.running_tasks.insert(
                 self.next_running_task_id,
                 RunningTask {
@@ -181,6 +184,13 @@ impl SparkRunner {
             let task_id = self.task_queues.get_mut(&host).unwrap().pop_front().unwrap();
             let running_task = &self.running_tasks[&task_id];
             let mut transfers = HashSet::new();
+            log_debug!(
+                self.ctx,
+                "starting task {}.{} on host {}",
+                running_task.stage_id,
+                running_task.task_id,
+                host
+            );
 
             for data_item in running_task.input.iter() {
                 match *data_item {
@@ -227,6 +237,7 @@ impl SparkRunner {
     }
 
     fn stage_completed(&mut self, stage_id: usize) {
+        log_debug!(self.ctx, "stage {} completed", stage_id);
         self.graph.mark_completed(stage_id);
         if self.graph.completed_stages().len() == self.graph.stages().len() {
             log_info!(self.ctx, "execution finished");

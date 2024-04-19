@@ -18,6 +18,7 @@ pub struct TaskPlacement {
 }
 
 pub trait PlacementStrategy {
+    #[allow(clippy::too_many_arguments)]
     fn place_stage(
         &mut self,
         stage: &Stage,

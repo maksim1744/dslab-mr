@@ -12,7 +12,7 @@ use distributed_file_system::{
     host_info::{ChunkId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
-use dslab_core::{EventHandler, Id, Simulation};
+use dslab_core::{log_info, EventHandler, Id, Simulation};
 use dslab_network::{
     models::{SharedBandwidthNetworkModel, TopologyAwareNetworkModel},
     Link, Network,
@@ -93,7 +93,7 @@ impl PlacementStrategy for SimplePlacementStrategy {
         stage: &Stage,
         _graph: &Graph,
         input_data: &[DataItem],
-        _input_data_shuffled: &[Vec<DataItem>],
+        input_data_shuffled: &[Vec<DataItem>],
         dfs: &DistributedFileSystem,
         _compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
         _network: &Network,
@@ -115,13 +115,16 @@ impl PlacementStrategy for SimplePlacementStrategy {
         let hosts = dfs.hosts_info().keys().copied().collect::<Vec<_>>();
         let mut result = (0..stage.tasks().len())
             .map(|task_id| TaskPlacement {
-                host: hosts[task_id as usize % hosts.len()],
+                host: hosts[task_id % hosts.len()],
                 input: Vec::new(),
             })
             .collect::<Vec<_>>();
         for (i, &chunk_id) in my_data_items.iter().enumerate() {
             let target_task = i % result.len();
             result[target_task].input.push(chunk_id);
+        }
+        for (i, shuffled_data) in input_data_shuffled.iter().enumerate() {
+            result[i].input.extend(shuffled_data);
         }
         result
     }
@@ -202,6 +205,7 @@ fn main() {
         dfs_id,
     );
     sim.step_until_no_events();
+    log_info!(root, "data registered, starting execution");
 
     let runner = Rc::new(RefCell::new(SparkRunner::new(
         graph,
