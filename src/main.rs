@@ -17,18 +17,18 @@ use dslab_network::{
     models::{SharedBandwidthNetworkModel, TopologyAwareNetworkModel},
     Link, Network,
 };
-use spark::{
+use runtime::{
     compute_host_info::ComputeHostInfo,
+    dag::{Dag, SimpleTask, Stage, Task, UniformShuffle},
     data_item::DataItem,
-    graph::{Graph, SimpleTask, Stage, Task, UniformShuffle},
     placement_strategy::{PlacementStrategy, TaskPlacement},
-    runner::{SparkRunner, Start},
+    runner::{Runner, Start},
 };
 
 use crate::distributed_file_system::dfs::DistributedFileSystem;
 
 mod distributed_file_system;
-mod spark;
+mod runtime;
 
 fn make_star_topology(network: &mut Network, host_count: usize) {
     let switch_name = "switch".to_string();
@@ -91,7 +91,7 @@ impl PlacementStrategy for SimplePlacementStrategy {
     fn place_stage(
         &mut self,
         stage: &Stage,
-        _graph: &Graph,
+        _graph: &Dag,
         input_data: &[DataItem],
         input_data_shuffled: &[Vec<DataItem>],
         dfs: &DistributedFileSystem,
@@ -167,7 +167,7 @@ fn main() {
         }
     }
 
-    let mut graph = Graph::new();
+    let mut graph = Dag::new();
     graph.add_stage(
         (0..2)
             .map(|task_id| Box::new(SimpleTask::new(task_id, 300. + task_id as f64 * 50., 2.)) as Box<dyn Task>)
@@ -207,7 +207,7 @@ fn main() {
     sim.step_until_no_events();
     log_info!(root, "data registered, starting execution");
 
-    let runner = Rc::new(RefCell::new(SparkRunner::new(
+    let runner = Rc::new(RefCell::new(Runner::new(
         graph,
         Box::new(SimplePlacementStrategy {}),
         actor_ids

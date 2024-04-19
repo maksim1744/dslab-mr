@@ -110,7 +110,7 @@ pub struct Connection {
     pub shuffle: Option<Box<dyn Shuffle>>,
 }
 
-pub struct Graph {
+pub struct Dag {
     stages: Vec<Stage>,
     connections: Vec<Connection>,
     stage_dependencies: Vec<Vec<Connection>>,
@@ -120,9 +120,9 @@ pub struct Graph {
     outgoing_connection: Vec<Option<usize>>,
 }
 
-impl Graph {
+impl Dag {
     pub fn new() -> Self {
-        Graph {
+        Dag {
             stages: Vec::new(),
             connections: Vec::new(),
             stage_dependencies: Vec::new(),

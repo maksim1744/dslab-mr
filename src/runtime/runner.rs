@@ -13,9 +13,7 @@ use crate::distributed_file_system::{
     host_info::{ChunkId, DataId},
 };
 
-use super::{
-    compute_host_info::ComputeHostInfo, data_item::DataItem, graph::Graph, placement_strategy::PlacementStrategy,
-};
+use super::{compute_host_info::ComputeHostInfo, dag::Dag, data_item::DataItem, placement_strategy::PlacementStrategy};
 
 #[derive(Clone, Serialize)]
 pub struct Start {}
@@ -58,9 +56,9 @@ pub struct RunningStage {
     waiting_for_replication: HashSet<DataId>,
 }
 
-pub struct SparkRunner {
+pub struct Runner {
     placement_strategy: Box<dyn PlacementStrategy>,
-    graph: Graph,
+    graph: Dag,
     compute_host_info: BTreeMap<Id, ComputeHostInfo>,
     dfs: Rc<RefCell<DistributedFileSystem>>,
     network: Rc<RefCell<Network>>,
@@ -76,9 +74,9 @@ pub struct SparkRunner {
     ctx: SimulationContext,
 }
 
-impl SparkRunner {
+impl Runner {
     pub fn new(
-        graph: Graph,
+        graph: Dag,
         placement_strategy: Box<dyn PlacementStrategy>,
         compute_host_info: BTreeMap<Id, ComputeHostInfo>,
         initial_data: HashMap<usize, Vec<DataItem>>,
@@ -93,7 +91,7 @@ impl SparkRunner {
             .map(|(&k, _v)| k + 1)
             .max()
             .unwrap_or(0);
-        SparkRunner {
+        Runner {
             placement_strategy,
             graph,
             compute_host_info,
@@ -288,7 +286,7 @@ impl SparkRunner {
     }
 }
 
-impl EventHandler for SparkRunner {
+impl EventHandler for Runner {
     fn on(&mut self, event: Event) {
         cast!(match event.data {
             Start {} => {

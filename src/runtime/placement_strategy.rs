@@ -7,8 +7,8 @@ use crate::distributed_file_system::dfs::DistributedFileSystem;
 
 use super::{
     compute_host_info::ComputeHostInfo,
+    dag::{Dag, Stage},
     data_item::DataItem,
-    graph::{Graph, Stage},
 };
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ pub trait PlacementStrategy {
     fn place_stage(
         &mut self,
         stage: &Stage,
-        graph: &Graph,
+        graph: &Dag,
         input_data: &[DataItem],
         input_data_shuffled: &[Vec<DataItem>],
         dfs: &DistributedFileSystem,
