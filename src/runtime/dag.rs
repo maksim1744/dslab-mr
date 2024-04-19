@@ -73,10 +73,7 @@ impl Shuffle for UniformShuffle {
         let mut next_task_id = 0;
         for &data_item in input.iter() {
             match data_item {
-                DataItem::Chunk { .. } => {
-                    result[next_task_id].push(data_item);
-                    next_task_id = (next_task_id + 1) % output_tasks;
-                }
+                DataItem::Chunk { .. } => unreachable!(),
                 DataItem::Local { host, size } => {
                     for i in 0..output_tasks {
                         let current_size = (size + i as u64) / output_tasks as u64;
