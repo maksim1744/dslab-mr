@@ -16,7 +16,7 @@ use dslab_core::{log_info, EventHandler, Id, Simulation};
 use dslab_network::Network;
 use runtime::{
     compute_host_info::ComputeHostInfo,
-    dag::{Dag, SimpleTask, Stage, Task, UniformShuffle},
+    dag::{Dag, Stage},
     data_item::DataItem,
     placement_strategy::{PlacementStrategy, TaskPlacement},
     runner::{Runner, Start},
@@ -149,20 +149,7 @@ fn main() {
         }
     }
 
-    let mut graph = Dag::new();
-    graph.add_stage(
-        (0..2)
-            .map(|task_id| Box::new(SimpleTask::new(task_id, 300. + task_id as f64 * 50., 2.)) as Box<dyn Task>)
-            .collect(),
-        false,
-    );
-    graph.add_stage(
-        (0..2)
-            .map(|task_id| Box::new(SimpleTask::new(task_id, 100. + task_id as f64 * 10., 0.1)) as Box<dyn Task>)
-            .collect(),
-        true,
-    );
-    graph.add_connection(0, 1, Some(Box::new(UniformShuffle {})));
+    let dag = Dag::from_yaml("map_reduce.yaml");
 
     let first_host = *hosts.keys().next().unwrap();
     let dfs = DistributedFileSystem::new(
@@ -179,7 +166,7 @@ fn main() {
 
     root.emit_now(
         RegisterData {
-            size: 256,
+            size: dag.initial_data(),
             host: first_host,
             data_id: 0,
             need_to_replicate: true,
@@ -190,7 +177,7 @@ fn main() {
     log_info!(root, "data registered, starting execution");
 
     let runner = Rc::new(RefCell::new(Runner::new(
-        graph,
+        dag,
         Box::new(SimplePlacementStrategy {}),
         actor_ids
             .iter()

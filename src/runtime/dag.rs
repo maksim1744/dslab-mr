@@ -108,6 +108,7 @@ pub struct Connection {
 }
 
 pub struct Dag {
+    initial_data: u64,
     stages: Vec<Stage>,
     connections: Vec<Connection>,
     stage_dependencies: Vec<Vec<Connection>>,
@@ -120,6 +121,7 @@ pub struct Dag {
 impl Dag {
     pub fn new() -> Self {
         Dag {
+            initial_data: 0,
             stages: Vec::new(),
             connections: Vec::new(),
             stage_dependencies: Vec::new(),
@@ -128,6 +130,15 @@ impl Dag {
             need_dependencies: Vec::new(),
             outgoing_connection: Vec::new(),
         }
+    }
+
+    pub fn with_initial_data(mut self, initial_data: u64) -> Self {
+        self.initial_data = initial_data;
+        self
+    }
+
+    pub fn initial_data(&self) -> u64 {
+        self.initial_data
     }
 
     pub fn add_stage(&mut self, tasks: Vec<Box<dyn Task>>, upload_result_to_dfs: bool) -> usize {
