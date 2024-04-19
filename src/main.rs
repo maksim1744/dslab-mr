@@ -13,10 +13,7 @@ use distributed_file_system::{
     replication_strategy::ReplicationStrategy,
 };
 use dslab_core::{log_info, EventHandler, Id, Simulation};
-use dslab_network::{
-    models::{SharedBandwidthNetworkModel, TopologyAwareNetworkModel},
-    Link, Network,
-};
+use dslab_network::Network;
 use runtime::{
     compute_host_info::ComputeHostInfo,
     dag::{Dag, SimpleTask, Stage, Task, UniformShuffle},
@@ -25,21 +22,10 @@ use runtime::{
     runner::{Runner, Start},
 };
 
-use crate::distributed_file_system::dfs::DistributedFileSystem;
+use crate::distributed_file_system::{dfs::DistributedFileSystem, network::make_tree_topology};
 
 mod distributed_file_system;
 mod runtime;
-
-fn make_star_topology(network: &mut Network, host_count: usize) {
-    let switch_name = "switch".to_string();
-    network.add_node(&switch_name, Box::new(SharedBandwidthNetworkModel::new(1e+5, 0.)));
-
-    for i in 0..host_count {
-        let host_name = format!("host_{}", i);
-        network.add_node(&host_name, Box::new(SharedBandwidthNetworkModel::new(1e+5, 0.)));
-        network.add_link(&host_name, &switch_name, Link::shared(1., 1e-4));
-    }
-}
 
 struct DataOnHost {}
 
@@ -137,11 +123,7 @@ fn main() {
 
     let mut sim = Simulation::new(123);
 
-    let mut network = Network::new(Box::new(TopologyAwareNetworkModel::new()), sim.create_context("net"));
-    make_star_topology(&mut network, 3);
-    network.init_topology();
-    let network_rc = Rc::new(RefCell::new(network));
-    sim.add_handler("net", network_rc.clone());
+    let network_rc = make_tree_topology(&mut sim, 3, 2);
 
     let mut hosts: BTreeMap<Id, HostInfo> = BTreeMap::new();
     let nodes = network_rc.borrow_mut().get_nodes();
