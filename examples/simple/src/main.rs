@@ -18,7 +18,7 @@ use dslab_mr::{
     dag::{Dag, Stage},
     data_item::DataItem,
     placement_strategy::{PlacementStrategy, TaskPlacement},
-    runner::{Runner, Start},
+    runner::{NewDag, Runner},
 };
 use dslab_network::Network;
 
@@ -146,7 +146,8 @@ fn main() {
         }
     }
 
-    let dag = Dag::from_yaml("map_reduce.yaml");
+    let dag1 = Dag::from_yaml("map_reduce.yaml");
+    let dag2 = Dag::from_yaml("map_reduce.yaml");
 
     let first_host = *hosts.keys().next().unwrap();
     let dfs = DistributedFileSystem::new(
@@ -163,9 +164,18 @@ fn main() {
 
     root.emit_now(
         RegisterData {
-            size: dag.initial_data(),
+            size: dag1.initial_data(),
             host: first_host,
             data_id: 0,
+            need_to_replicate: true,
+        },
+        dfs_id,
+    );
+    root.emit_now(
+        RegisterData {
+            size: dag2.initial_data(),
+            host: first_host,
+            data_id: 1,
             need_to_replicate: true,
         },
         dfs_id,
@@ -174,14 +184,10 @@ fn main() {
     log_info!(root, "data registered, starting execution");
 
     let runner = Rc::new(RefCell::new(Runner::new(
-        dag,
         Box::new(SimplePlacementStrategy {}),
         actor_ids
             .iter()
             .map(|&actor_id| (actor_id, ComputeHostInfo { available_slots: 4 }))
-            .collect(),
-        [(0, vec![DataItem::Replicated { size: 256, data_id: 0 }])]
-            .into_iter()
             .collect(),
         dfs.clone(),
         network_rc.clone(),
@@ -189,6 +195,24 @@ fn main() {
     )));
     let runner_id = sim.add_handler("runner", runner.clone());
 
-    root.emit_now(Start {}, runner_id);
+    root.emit_now(
+        NewDag {
+            dag: Rc::new(RefCell::new(dag1)),
+            initial_data: [(0, vec![DataItem::Replicated { size: 256, data_id: 0 }])]
+                .into_iter()
+                .collect(),
+        },
+        runner_id,
+    );
+    root.emit(
+        NewDag {
+            dag: Rc::new(RefCell::new(dag2)),
+            initial_data: [(0, vec![DataItem::Replicated { size: 256, data_id: 1 }])]
+                .into_iter()
+                .collect(),
+        },
+        runner_id,
+        50000.,
+    );
     sim.step_until_no_events();
 }
