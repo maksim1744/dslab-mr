@@ -1,0 +1,13 @@
+[package]
+name = "dslab-mr"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+[dependencies]
+dslab-core = { git = "https://github.com/osukhoroslov/dslab", version = "0.1.0" }
+dslab-dfs = { version = "0.1.0", path = "../distributed_file_system" }
+dslab-network = { git = "https://github.com/osukhoroslov/dslab", version = "0.1.0" }
+log = "0.4.21"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_yaml = "0.9.34"

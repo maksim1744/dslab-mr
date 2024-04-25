@@ -7,25 +7,22 @@ use std::{
 
 use env_logger::Builder;
 
-use distributed_file_system::{
+use dslab_core::{log_info, EventHandler, Id, Simulation};
+use dslab_dfs::{
     dfs::RegisterData,
     host_info::{ChunkId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
-use dslab_core::{log_info, EventHandler, Id, Simulation};
-use dslab_network::Network;
-use runtime::{
+use dslab_mr::{
     compute_host_info::ComputeHostInfo,
     dag::{Dag, Stage},
     data_item::DataItem,
     placement_strategy::{PlacementStrategy, TaskPlacement},
     runner::{Runner, Start},
 };
+use dslab_network::Network;
 
-use crate::distributed_file_system::{dfs::DistributedFileSystem, network::make_tree_topology};
-
-mod distributed_file_system;
-mod runtime;
+use dslab_dfs::{dfs::DistributedFileSystem, network::make_tree_topology};
 
 struct DataOnHost {}
 

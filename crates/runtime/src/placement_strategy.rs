@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use dslab_core::Id;
 use dslab_network::Network;
 
-use crate::distributed_file_system::dfs::DistributedFileSystem;
+use dslab_dfs::dfs::DistributedFileSystem;
 
 use super::{
     compute_host_info::ComputeHostInfo,

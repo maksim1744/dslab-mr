@@ -34,7 +34,6 @@ pub fn make_tree_topology(sim: &mut Simulation, star_count: usize, hosts_per_sta
     network_rc
 }
 
-#[allow(unused)]
 pub fn make_fat_tree_topology(
     sim: &mut Simulation,
     l2_switch_count: usize,
@@ -72,7 +71,6 @@ pub fn make_fat_tree_topology(
     network_rc
 }
 
-#[allow(unused)]
 pub fn get_rack(network: &Network, id: Id) -> Option<u64> {
     let id = network.get_location(id);
     network

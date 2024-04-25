@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::distributed_file_system::dfs::DistributedFileSystem;
+use dslab_dfs::dfs::DistributedFileSystem;
 
 use super::data_item::DataItem;
 
@@ -41,13 +41,16 @@ impl Task for SimpleTask {
 }
 
 pub struct Stage {
-    #[allow(unused)]
     id: usize,
     tasks: Vec<Box<dyn Task>>,
     upload_result_to_dfs: bool,
 }
 
 impl Stage {
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
     pub fn tasks(&self) -> &Vec<Box<dyn Task>> {
         &self.tasks
     }
@@ -100,8 +103,7 @@ impl Shuffle for UniformShuffle {
 }
 
 pub struct Connection {
-    #[allow(unused)]
-    id: usize,
+    pub id: usize,
     pub from: usize,
     pub to: usize,
     pub shuffle: Option<Box<dyn Shuffle>>,
@@ -207,12 +209,17 @@ impl Dag {
         &self.connections[connection_id]
     }
 
-    #[allow(unused)]
     pub fn stage_dependencies(&self, stage_id: usize) -> &Vec<Connection> {
         &self.stage_dependencies[stage_id]
     }
 
     pub fn outgoing_connection(&self, stage_id: usize) -> Option<usize> {
         self.outgoing_connection[stage_id]
+    }
+}
+
+impl Default for Dag {
+    fn default() -> Self {
+        Self::new()
     }
 }

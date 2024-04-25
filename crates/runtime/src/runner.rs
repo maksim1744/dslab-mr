@@ -8,7 +8,7 @@ use dslab_core::{cast, log_debug, log_error, log_info, log_warn, Event, EventHan
 use dslab_network::{DataTransferCompleted, Network};
 use serde::Serialize;
 
-use crate::distributed_file_system::{
+use dslab_dfs::{
     dfs::{DistributedFileSystem, RegisterData, RegisteredData},
     host_info::{ChunkId, DataId},
 };

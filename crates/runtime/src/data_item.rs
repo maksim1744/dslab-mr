@@ -1,6 +1,6 @@
 use dslab_core::Id;
 
-use crate::distributed_file_system::host_info::{ChunkId, DataId};
+use dslab_dfs::host_info::{ChunkId, DataId};
 
 #[derive(Debug, Clone, Copy)]
 pub enum DataItem {

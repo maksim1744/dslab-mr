@@ -285,7 +285,6 @@ impl DistributedFileSystem {
         &self.chunks_location
     }
 
-    #[allow(unused)]
     pub fn chunk_location(&self, chunk_id: ChunkId) -> Option<&BTreeSet<Id>> {
         self.chunks_location.get(&chunk_id)
     }
