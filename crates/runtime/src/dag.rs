@@ -117,7 +117,7 @@ pub struct Dag {
     ready_stages: BTreeSet<usize>,
     completed_stages: BTreeSet<usize>,
     need_dependencies: Vec<usize>,
-    outgoing_connection: Vec<Option<usize>>,
+    outgoing_connections: Vec<Vec<usize>>,
 }
 
 impl Dag {
@@ -130,7 +130,7 @@ impl Dag {
             ready_stages: BTreeSet::new(),
             completed_stages: BTreeSet::new(),
             need_dependencies: Vec::new(),
-            outgoing_connection: Vec::new(),
+            outgoing_connections: Vec::new(),
         }
     }
 
@@ -152,7 +152,7 @@ impl Dag {
         self.stage_dependencies.push(vec![]);
         self.ready_stages.insert(self.stages.len() - 1);
         self.need_dependencies.push(0);
-        self.outgoing_connection.push(None);
+        self.outgoing_connections.push(Vec::new());
         self.stages.len() - 1
     }
 
@@ -165,11 +165,7 @@ impl Dag {
         });
         self.ready_stages.remove(&to);
         self.need_dependencies[to] += 1;
-        assert!(
-            self.outgoing_connection[from].is_none(),
-            "RDD can be used as input only once"
-        );
-        self.outgoing_connection[from] = Some(self.connections.len() - 1);
+        self.outgoing_connections[from].push(self.connections.len() - 1);
         self.connections.len() - 1
     }
 
@@ -180,7 +176,7 @@ impl Dag {
     pub fn mark_completed(&mut self, stage_id: usize) {
         self.ready_stages.remove(&stage_id);
         self.completed_stages.insert(stage_id);
-        for &connection in self.outgoing_connection[stage_id].iter() {
+        for &connection in self.outgoing_connections[stage_id].iter() {
             let to = self.connections[connection].to;
             self.need_dependencies[to] -= 1;
             if self.need_dependencies[to] == 0 {
@@ -213,8 +209,8 @@ impl Dag {
         &self.stage_dependencies[stage_id]
     }
 
-    pub fn outgoing_connection(&self, stage_id: usize) -> Option<usize> {
-        self.outgoing_connection[stage_id]
+    pub fn outgoing_connections(&self, stage_id: usize) -> &Vec<usize> {
+        &self.outgoing_connections[stage_id]
     }
 }
 

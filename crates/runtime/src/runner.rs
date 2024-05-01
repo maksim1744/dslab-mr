@@ -250,11 +250,11 @@ impl Runner {
             log_debug!(self.ctx, "dag {} finished", dag_id);
         }
         let running_stage = self.running_stages.remove(&(dag_id, stage_id)).unwrap();
-        if let Some(connection_id) = dag.outgoing_connection(stage_id) {
-            let outputs = running_stage.outputs;
+        for &connection_id in dag.outgoing_connections(stage_id).iter() {
+            let outputs = &running_stage.outputs;
             if let Some(shuffle) = &dag.connection(connection_id).shuffle {
                 let shuffled_outputs = shuffle.shuffle(
-                    &outputs,
+                    outputs,
                     &self.dfs.borrow(),
                     dag.stage(dag.connection(connection_id).to).tasks().len(),
                 );
