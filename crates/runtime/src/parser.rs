@@ -1,40 +1,45 @@
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::dag::{Dag, Shuffle, SimpleTask, Task, UniformShuffle};
 
-#[derive(Deserialize)]
-struct YamlTask {
-    time_per_byte: f64,
-    output_size_ratio: f64,
+#[derive(Serialize, Deserialize)]
+pub struct YamlTask {
+    pub time_per_byte: f64,
+    pub output_size_ratio: f64,
 }
 
-#[derive(Deserialize)]
-struct YamlConnection {
-    from: usize,
-    #[serde(default)]
-    shuffle: Option<ShuffleType>,
+#[derive(Serialize, Deserialize)]
+pub struct YamlConnection {
+    pub from: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shuffle: Option<ShuffleType>,
 }
 
-#[derive(Deserialize)]
-struct YamlStage {
-    tasks: Vec<YamlTask>,
-    #[serde(default)]
-    upload_result_to_dfs: bool,
-    #[serde(default)]
-    connections: Vec<YamlConnection>,
+fn is_false(b: &bool) -> bool {
+    !b
 }
 
-#[derive(Deserialize)]
-enum ShuffleType {
+#[derive(Serialize, Deserialize)]
+pub struct YamlStage {
+    pub tasks: Vec<YamlTask>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub upload_result_to_dfs: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connections: Vec<YamlConnection>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum ShuffleType {
     Simple,
 }
 
-#[derive(Deserialize)]
-struct YamlDag {
-    initial_data: u64,
-    stages: Vec<YamlStage>,
+#[derive(Serialize, Deserialize)]
+pub struct YamlDag {
+    pub initial_data: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stages: Vec<YamlStage>,
 }
 
 impl Dag {
