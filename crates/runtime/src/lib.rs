@@ -1,3 +1,4 @@
+pub mod cluster_simulation;
 pub mod compute_host_info;
 pub mod dag;
 pub mod data_item;

@@ -7,7 +7,7 @@ use std::{
 
 use clap::Parser;
 use csv::ReaderBuilder;
-use dslab_mr::parser::{ShuffleType, YamlConnection, YamlDag, YamlStage, YamlTask};
+use dslab_mr::parser::{ShuffleType, StageInitialData, YamlConnection, YamlDag, YamlStage, YamlTask};
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use serde::Deserialize;
@@ -184,8 +184,19 @@ fn main() {
     let jobs = read_batch_task(&args);
     for (job_id, tasks) in jobs.into_iter() {
         let mut dag = YamlDag {
-            initial_data: (rng.gen_range(args.initial_data_size_from..args.initial_data_size_to)
-                * tasks.iter().map(|t| t.instances).sum::<i64>() as f64) as u64,
+            initial_data: tasks
+                .iter()
+                .enumerate()
+                .filter(|(_id, task)| task.dependencies.is_empty())
+                .map(|(id, task)| {
+                    (
+                        id,
+                        (rng.gen_range(args.initial_data_size_from..args.initial_data_size_to) * task.instances as f64)
+                            as u64,
+                    )
+                })
+                .map(|(stage, size)| StageInitialData { stage, size })
+                .collect(),
             stages: Vec::new(),
         };
         let task_index = tasks

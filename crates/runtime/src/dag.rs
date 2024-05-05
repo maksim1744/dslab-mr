@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use dslab_dfs::dfs::DistributedFileSystem;
 
@@ -110,7 +110,7 @@ pub struct Connection {
 }
 
 pub struct Dag {
-    initial_data: u64,
+    initial_data: BTreeMap<usize, u64>,
     stages: Vec<Stage>,
     connections: Vec<Connection>,
     stage_dependencies: Vec<Vec<Connection>>,
@@ -123,7 +123,7 @@ pub struct Dag {
 impl Dag {
     pub fn new() -> Self {
         Dag {
-            initial_data: 0,
+            initial_data: BTreeMap::new(),
             stages: Vec::new(),
             connections: Vec::new(),
             stage_dependencies: Vec::new(),
@@ -134,13 +134,12 @@ impl Dag {
         }
     }
 
-    pub fn with_initial_data(mut self, initial_data: u64) -> Self {
-        self.initial_data = initial_data;
-        self
+    pub fn add_initial_data(&mut self, stage_id: usize, initial_data: u64) {
+        self.initial_data.insert(stage_id, initial_data);
     }
 
-    pub fn initial_data(&self) -> u64 {
-        self.initial_data
+    pub fn initial_data(&self) -> &BTreeMap<usize, u64> {
+        &self.initial_data
     }
 
     pub fn add_stage(&mut self, tasks: Vec<Box<dyn Task>>, upload_result_to_dfs: bool) -> usize {

@@ -1,0 +1,15 @@
+dags:
+- dag: map_reduce
+  start_time: 0
+  input:
+  - stage: 0
+    input:
+      type: RegisterInitially
+      host: host_0_0
+- dag: map_reduce
+  start_time: 100000
+  input:
+  - stage: 0
+    input:
+      type: RegisterOnStart
+      host: host_0_0

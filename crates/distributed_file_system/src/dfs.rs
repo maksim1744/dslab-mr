@@ -37,6 +37,7 @@ pub struct DistributedFileSystem {
     waiting_for_data_transfer: HashMap<usize, CopyChunkTask>,
     next_chunk_id: ChunkId,
     network: Rc<RefCell<Network>>,
+    next_data_id: u64,
     ctx: SimulationContext,
 }
 
@@ -145,6 +146,7 @@ impl EventHandler for DistributedFileSystem {
                     self.ctx.emit_now(UnknownHost { host }, event.src);
                     return;
                 }
+                self.next_data_id = self.next_data_id.max(data_id + 1);
                 let task_id = self.next_task_id;
                 self.next_task_id += 1;
                 for (&chunk_id, target_hosts) in target_hosts.iter() {
@@ -265,6 +267,7 @@ impl DistributedFileSystem {
             waiting_for_data_transfer: HashMap::new(),
             next_chunk_id,
             network,
+            next_data_id: 0,
             ctx,
         }
     }
@@ -295,6 +298,11 @@ impl DistributedFileSystem {
 
     pub fn chunk_size(&self) -> u64 {
         self.chunk_size
+    }
+
+    pub fn next_data_id(&mut self) -> u64 {
+        self.next_data_id += 1;
+        self.next_data_id - 1
     }
 
     fn chunk_exists(&self, host: Id, chunk_id: ChunkId, notify_id: Id) -> bool {

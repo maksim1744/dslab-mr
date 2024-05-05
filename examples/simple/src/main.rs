@@ -1,42 +1,24 @@
 use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     io::Write,
-    rc::Rc,
 };
 
 use env_logger::Builder;
 
-use dslab_core::{log_info, EventHandler, Id, Simulation};
+use dslab_core::Id;
 use dslab_dfs::{
-    dfs::RegisterData,
+    dfs::DistributedFileSystem,
     host_info::{ChunkId, HostInfo},
     replication_strategy::ReplicationStrategy,
 };
 use dslab_mr::{
+    cluster_simulation::{ClusterSimulation, NetworkConfig, SimulationPlan},
     compute_host_info::ComputeHostInfo,
     dag::{Dag, Stage},
     data_item::DataItem,
     placement_strategy::{PlacementStrategy, TaskPlacement},
-    runner::{NewDag, Runner},
 };
 use dslab_network::Network;
-
-use dslab_dfs::{dfs::DistributedFileSystem, network::make_tree_topology};
-
-struct DataOnHost {}
-
-impl DataOnHost {
-    fn new() -> Self {
-        DataOnHost {}
-    }
-}
-
-impl EventHandler for DataOnHost {
-    fn on(&mut self, _event: dslab_core::Event) {
-        panic!()
-    }
-}
 
 struct SimpleReplicationStrategy {}
 
@@ -118,101 +100,35 @@ fn main() {
         .format(|buf, record| writeln!(buf, "{}", record.args()))
         .init();
 
-    let mut sim = Simulation::new(123);
-
-    let network_rc = make_tree_topology(&mut sim, 3, 2);
-
-    let mut hosts: BTreeMap<Id, HostInfo> = BTreeMap::new();
-    let nodes = network_rc.borrow_mut().get_nodes();
-    let mut actor_ids = Vec::new();
-    for node_name in nodes {
-        if !node_name.starts_with("host_") {
-            continue;
-        }
-        for actor in 0..2 {
-            let data_on_host_name = format!("data_on_host_{}_{}", &node_name[5..], actor);
-            sim.create_context(&data_on_host_name);
-            let data_on_host = DataOnHost::new();
-            let data_on_host_id = sim.add_handler(data_on_host_name, Rc::new(RefCell::new(data_on_host)));
-            hosts.insert(
-                data_on_host_id,
-                HostInfo {
-                    free_space: 1024,
-                    chunks: BTreeSet::new(),
-                },
-            );
-            network_rc.borrow_mut().set_location(data_on_host_id, &node_name);
-            actor_ids.push(data_on_host_id);
-        }
-    }
-
-    let dag1 = Dag::from_yaml("map_reduce.yaml");
-    let dag2 = Dag::from_yaml("map_reduce.yaml");
-
-    let first_host = *hosts.keys().next().unwrap();
-    let dfs = DistributedFileSystem::new(
-        hosts,
-        HashMap::new(),
-        network_rc.clone(),
+    let sim = ClusterSimulation::new(
+        123,
+        SimulationPlan::from_yaml("plan.yaml", ".".into()),
+        NetworkConfig::Tree {
+            star_count: 3,
+            hosts_per_star: 2,
+        },
+        (0..3)
+            .flat_map(|star| {
+                (0..2).map(move |host| {
+                    (
+                        format!("host_{star}_{host}"),
+                        HostInfo {
+                            free_space: 1024,
+                            chunks: BTreeSet::new(),
+                        },
+                    )
+                })
+            })
+            .collect(),
         Box::new(SimpleReplicationStrategy::new()),
         16,
-        sim.create_context("dfs"),
-    );
-    let dfs = Rc::new(RefCell::new(dfs));
-    let dfs_id = sim.add_handler("dfs", dfs.clone());
-    let root = sim.create_context("root");
-
-    root.emit_now(
-        RegisterData {
-            size: dag1.initial_data(),
-            host: first_host,
-            data_id: 0,
-            need_to_replicate: true,
-        },
-        dfs_id,
-    );
-    root.emit_now(
-        RegisterData {
-            size: dag2.initial_data(),
-            host: first_host,
-            data_id: 1,
-            need_to_replicate: true,
-        },
-        dfs_id,
-    );
-    sim.step_until_no_events();
-    log_info!(root, "data registered, starting execution");
-
-    let runner = Rc::new(RefCell::new(Runner::new(
         Box::new(SimplePlacementStrategy {}),
-        actor_ids
-            .iter()
-            .map(|&actor_id| (actor_id, ComputeHostInfo { available_slots: 4 }))
+        (0..3)
+            .flat_map(|star| {
+                (0..2).map(move |host| (format!("host_{star}_{host}"), ComputeHostInfo { available_slots: 4 }))
+            })
             .collect(),
-        dfs.clone(),
-        network_rc.clone(),
-        sim.create_context("runner"),
-    )));
-    let runner_id = sim.add_handler("runner", runner.clone());
+    );
 
-    root.emit_now(
-        NewDag {
-            dag: Rc::new(RefCell::new(dag1)),
-            initial_data: [(0, vec![DataItem::Replicated { size: 256, data_id: 0 }])]
-                .into_iter()
-                .collect(),
-        },
-        runner_id,
-    );
-    root.emit(
-        NewDag {
-            dag: Rc::new(RefCell::new(dag2)),
-            initial_data: [(0, vec![DataItem::Replicated { size: 256, data_id: 1 }])]
-                .into_iter()
-                .collect(),
-        },
-        runner_id,
-        50000.,
-    );
-    sim.step_until_no_events();
+    sim.run();
 }

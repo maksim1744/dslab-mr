@@ -1,4 +1,6 @@
-initial_data: 256
+initial_data:
+  - stage: 0
+    size: 256
 stages:
   - tasks:
     - time_per_byte: 300

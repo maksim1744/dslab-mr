@@ -56,7 +56,6 @@ pub struct Runner {
     compute_host_info: BTreeMap<Id, ComputeHostInfo>,
     dfs: Rc<RefCell<DistributedFileSystem>>,
     network: Rc<RefCell<Network>>,
-    next_data_id: DataId,
     stage_input: HashMap<(usize, usize), Vec<DataItem>>,
     stage_input_shuffled: HashMap<(usize, usize), Vec<Vec<DataItem>>>,
     running_tasks: HashMap<u64, RunningTask>,
@@ -76,20 +75,12 @@ impl Runner {
         network: Rc<RefCell<Network>>,
         ctx: SimulationContext,
     ) -> Self {
-        let next_data_id = dfs
-            .borrow()
-            .datas_chunks()
-            .iter()
-            .map(|(&k, _v)| k + 1)
-            .max()
-            .unwrap_or(0);
         Runner {
             placement_strategy,
             dags: Vec::new(),
             compute_host_info,
             dfs,
             network,
-            next_data_id,
             stage_input: HashMap::new(),
             stage_input_shuffled: HashMap::new(),
             running_tasks: HashMap::new(),
@@ -367,8 +358,7 @@ impl EventHandler for Runner {
                     .task(task.task_id)
                     .output_size(task.input_size());
                 if dag.stage(task.stage_id).upload_result_to_dfs() {
-                    let data_id = self.next_data_id;
-                    self.next_data_id += 1;
+                    let data_id = self.dfs.borrow_mut().next_data_id();
                     self.ctx.emit_now(
                         RegisterData {
                             size: output_size,
