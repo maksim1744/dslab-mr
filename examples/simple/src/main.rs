@@ -10,7 +10,7 @@ use dslab_dfs::{
 };
 use dslab_mr::{
     cluster_simulation::{ClusterSimulation, SimulationPlan},
-    compute_host_info::ComputeHostInfo,
+    compute_host::ComputeHost,
     dag::{Dag, Stage},
     data_item::DataItem,
     placement_strategy::{PlacementStrategy, TaskPlacement},
@@ -58,7 +58,7 @@ impl PlacementStrategy for SimplePlacementStrategy {
         input_data: &[DataItem],
         _input_data_shuffled: &[Vec<DataItem>],
         dfs: &DistributedFileSystem,
-        _compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        _compute_host_info: &BTreeMap<Id, ComputeHost>,
         _network: &Network,
     ) -> Vec<TaskPlacement> {
         let mut my_data_items = Vec::new();

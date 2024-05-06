@@ -5,8 +5,9 @@ use dslab_network::Network;
 
 use dslab_dfs::dfs::DistributedFileSystem;
 
+use crate::compute_host::ComputeHost;
+
 use super::{
-    compute_host_info::ComputeHostInfo,
     dag::{Dag, Stage},
     data_item::DataItem,
 };
@@ -26,7 +27,7 @@ pub trait PlacementStrategy {
         input_data: &[DataItem],
         input_data_shuffled: &[Vec<DataItem>],
         dfs: &DistributedFileSystem,
-        compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        compute_host_info: &BTreeMap<Id, ComputeHost>,
         network: &Network,
     ) -> Vec<TaskPlacement>;
 }
@@ -54,7 +55,7 @@ pub trait DynamicPlacementStrategy {
         input_data: &BTreeMap<usize, Vec<DataItem>>,
         input_data_shuffled: &BTreeMap<usize, Vec<Vec<DataItem>>>,
         dfs: &DistributedFileSystem,
-        compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        compute_host_info: &BTreeMap<Id, ComputeHost>,
         network: &Network,
     ) -> Vec<StageActions>;
 
@@ -67,7 +68,7 @@ pub trait DynamicPlacementStrategy {
         input_data: &BTreeMap<usize, Vec<DataItem>>,
         input_data_shuffled: &BTreeMap<usize, Vec<Vec<DataItem>>>,
         dfs: &DistributedFileSystem,
-        compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        compute_host_info: &BTreeMap<Id, ComputeHost>,
         network: &Network,
     ) -> Vec<StageActions>;
 
@@ -79,7 +80,7 @@ pub trait DynamicPlacementStrategy {
         input_data: &BTreeMap<usize, Vec<DataItem>>,
         input_data_shuffled: &BTreeMap<usize, Vec<Vec<DataItem>>>,
         dfs: &DistributedFileSystem,
-        compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        compute_host_info: &BTreeMap<Id, ComputeHost>,
         network: &Network,
     ) -> Vec<StageActions>;
 }
@@ -95,7 +96,7 @@ where
         input_data: &BTreeMap<usize, Vec<DataItem>>,
         input_data_shuffled: &BTreeMap<usize, Vec<Vec<DataItem>>>,
         dfs: &DistributedFileSystem,
-        compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        compute_host_info: &BTreeMap<Id, ComputeHost>,
         network: &Network,
     ) -> Vec<StageActions> {
         vec![StageActions {
@@ -130,7 +131,7 @@ where
         _input_data: &BTreeMap<usize, Vec<DataItem>>,
         _input_data_shuffled: &BTreeMap<usize, Vec<Vec<DataItem>>>,
         _dfs: &DistributedFileSystem,
-        _compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        _compute_host_info: &BTreeMap<Id, ComputeHost>,
         _network: &Network,
     ) -> Vec<StageActions> {
         Vec::new()
@@ -143,7 +144,7 @@ where
         _input_data: &BTreeMap<usize, Vec<DataItem>>,
         _input_data_shuffled: &BTreeMap<usize, Vec<Vec<DataItem>>>,
         _dfs: &DistributedFileSystem,
-        _compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
+        _compute_host_info: &BTreeMap<Id, ComputeHost>,
         _network: &Network,
     ) -> Vec<StageActions> {
         Vec::new()

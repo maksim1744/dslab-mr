@@ -4,6 +4,7 @@ use std::{
     rc::Rc,
 };
 
+use dslab_compute::multicore::{CompFinished, CompStarted, CoresDependency};
 use dslab_core::{cast, log_debug, log_error, log_info, log_warn, Event, EventHandler, Id, SimulationContext};
 use dslab_network::{DataTransferCompleted, Network};
 use serde::Serialize;
@@ -14,11 +15,12 @@ use dslab_dfs::{
 };
 
 use crate::{
+    compute_host::ComputeHost,
     placement_strategy::{DynamicPlacementStrategy, StageActions},
     run_stats::RunStats,
 };
 
-use super::{compute_host_info::ComputeHostInfo, dag::Dag, data_item::DataItem};
+use super::{dag::Dag, data_item::DataItem};
 
 #[derive(Clone, Serialize)]
 pub struct NewDag {
@@ -58,7 +60,7 @@ pub struct RunningStage {
 pub struct Runner {
     placement_strategy: Box<dyn DynamicPlacementStrategy>,
     dags: Vec<Rc<RefCell<Dag>>>,
-    compute_host_info: BTreeMap<Id, ComputeHostInfo>,
+    compute_hosts: BTreeMap<Id, ComputeHost>,
     dfs: Rc<RefCell<DistributedFileSystem>>,
     network: Rc<RefCell<Network>>,
     stage_input: HashMap<usize, BTreeMap<usize, Vec<DataItem>>>,
@@ -67,6 +69,7 @@ pub struct Runner {
     next_running_task_id: u64,
     task_queues: BTreeMap<Id, VecDeque<u64>>,
     task_waiting_for_transfer: HashMap<usize, u64>,
+    computations: HashMap<u64, TaskCompleted>,
     running_stages: HashMap<(usize, usize), RunningStage>,
     waiting_for_replication: HashMap<u64, (usize, usize)>,
     rack_by_host: HashMap<Id, usize>,
@@ -78,7 +81,7 @@ pub struct Runner {
 impl Runner {
     pub fn new(
         placement_strategy: Box<dyn DynamicPlacementStrategy>,
-        compute_host_info: BTreeMap<Id, ComputeHostInfo>,
+        compute_hosts: BTreeMap<Id, ComputeHost>,
         dfs: Rc<RefCell<DistributedFileSystem>>,
         network: Rc<RefCell<Network>>,
         ctx: SimulationContext,
@@ -95,7 +98,7 @@ impl Runner {
                 )
             })
             .collect::<HashMap<_, _>>();
-        let rack_by_host = compute_host_info
+        let rack_by_host = compute_hosts
             .keys()
             .copied()
             .map(|id| (id, rack_by_node[&network.borrow().get_location(id)]))
@@ -103,7 +106,7 @@ impl Runner {
         Runner {
             placement_strategy,
             dags: Vec::new(),
-            compute_host_info,
+            compute_hosts,
             dfs,
             network,
             stage_input: HashMap::new(),
@@ -112,6 +115,7 @@ impl Runner {
             next_running_task_id: 0,
             task_queues: BTreeMap::new(),
             task_waiting_for_transfer: HashMap::new(),
+            computations: HashMap::new(),
             running_stages: HashMap::new(),
             waiting_for_replication: HashMap::new(),
             rack_by_host,
@@ -151,7 +155,7 @@ impl Runner {
         }
         for placement in actions.task_placements.into_iter() {
             let task_id = placement.task_id;
-            if !self.compute_host_info.contains_key(&placement.host) {
+            if !self.compute_hosts.contains_key(&placement.host) {
                 log_error!(
                     self.ctx,
                     "can't place task {} on host {} since it doesn't exist",
@@ -239,7 +243,7 @@ impl Runner {
             self.stage_input.get(&dag_id).unwrap_or(&BTreeMap::new()),
             self.stage_input_shuffled.get(&dag_id).unwrap_or(&BTreeMap::new()),
             &self.dfs.borrow(),
-            &self.compute_host_info,
+            &self.compute_hosts,
             &self.network.borrow(),
         );
         drop(dag);
@@ -256,14 +260,14 @@ impl Runner {
     }
 
     fn process_tasks_queue(&mut self, host: Id) {
-        while self.compute_host_info.get(&host).unwrap().available_slots > 0
+        while self.compute_hosts.get(&host).unwrap().available_cores > 0
             && self
                 .task_queues
                 .get(&host)
                 .map(|queue| !queue.is_empty())
                 .unwrap_or(false)
         {
-            self.compute_host_info.get_mut(&host).unwrap().available_slots -= 1;
+            self.compute_hosts.get_mut(&host).unwrap().available_cores -= 1;
             let task_id = self.task_queues.get_mut(&host).unwrap().pop_front().unwrap();
             let running_task = &self.running_tasks[&task_id];
             let mut transfers = HashSet::new();
@@ -377,7 +381,7 @@ impl Runner {
             self.stage_input.get(&dag_id).unwrap_or(&BTreeMap::new()),
             self.stage_input_shuffled.get(&dag_id).unwrap_or(&BTreeMap::new()),
             &self.dfs.borrow(),
-            &self.compute_host_info,
+            &self.compute_hosts,
             &self.network.borrow(),
         );
         drop(dag);
@@ -403,6 +407,37 @@ impl Runner {
             .map(|id| (self.network.borrow().latency(id, host), id))
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|(_latency, id)| id)
+    }
+
+    fn start_task(&mut self, running_task_id: u64, host: Id) {
+        let task = self.running_tasks.get_mut(&running_task_id).unwrap();
+        log_debug!(
+            self.ctx,
+            "started execution of task {}.{}.{} with input size {}",
+            task.dag_id,
+            task.stage_id,
+            task.task_id,
+            task.input_size()
+        );
+        let time = self.dags[task.dag_id]
+            .borrow()
+            .stage(task.stage_id)
+            .task(task.task_id)
+            .time(task.input_size());
+        self.run_stats.register_task_execution(time);
+
+        let computation_id =
+            self.compute_hosts[&host]
+                .compute
+                .borrow_mut()
+                .run(time, 0, 1, 1, CoresDependency::Linear, self.ctx.id());
+        self.computations.insert(
+            computation_id,
+            TaskCompleted {
+                task_id: running_task_id,
+                host,
+            },
+        );
     }
 }
 
@@ -443,24 +478,13 @@ impl EventHandler for Runner {
                     );
                     task.waiting_for_transfers.remove(&dt.id);
                     if task.waiting_for_transfers.is_empty() {
-                        log_debug!(
-                            self.ctx,
-                            "started execution of task {}.{}.{} with input size {}",
-                            task.dag_id,
-                            task.stage_id,
-                            task.task_id,
-                            task.input_size()
-                        );
-                        let time = self.dags[task.dag_id]
-                            .borrow()
-                            .stage(task.stage_id)
-                            .task(task.task_id)
-                            .time(task.input_size());
-                        self.run_stats.register_task_execution(time);
-                        self.ctx
-                            .emit(TaskCompleted { task_id, host: dt.dst }, self.ctx.id(), time);
+                        self.start_task(task_id, dt.dst);
                     }
                 }
+            }
+            CompStarted { .. } => {}
+            CompFinished { id } => {
+                self.ctx.emit_now(self.computations.remove(&id).unwrap(), self.ctx.id());
             }
             TaskCompleted { task_id, host } => {
                 let task = &self.running_tasks[&task_id];
@@ -500,7 +524,7 @@ impl EventHandler for Runner {
                     });
                 }
                 drop(dag);
-                self.compute_host_info.get_mut(&host).unwrap().available_slots += 1;
+                self.compute_hosts.get_mut(&host).unwrap().available_cores += 1;
 
                 let actions = self.placement_strategy.on_task_completed(
                     task.stage_id,
@@ -509,7 +533,7 @@ impl EventHandler for Runner {
                     self.stage_input.get(&task.dag_id).unwrap_or(&BTreeMap::new()),
                     self.stage_input_shuffled.get(&task.dag_id).unwrap_or(&BTreeMap::new()),
                     &self.dfs.borrow(),
-                    &self.compute_host_info,
+                    &self.compute_hosts,
                     &self.network.borrow(),
                 );
                 self.process_scheduler_actions(task.dag_id, actions);

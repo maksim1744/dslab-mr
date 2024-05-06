@@ -1,9 +1,10 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     rc::Rc,
 };
 
+use dslab_compute::multicore::Compute;
 use dslab_core::{cast, log_info, Event, EventHandler, Id, Simulation, SimulationContext};
 use dslab_dfs::{
     dfs::{DistributedFileSystem, RegisterData, RegisteredData},
@@ -14,7 +15,7 @@ use dslab_dfs::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    compute_host_info::ComputeHostInfo,
+    compute_host::ComputeHost,
     dag::Dag,
     data_item::DataItem,
     placement_strategy::DynamicPlacementStrategy,
@@ -310,20 +311,34 @@ impl ClusterSimulation {
         let dfs = Rc::new(RefCell::new(dfs));
         let _dfs_id = self.sim.add_handler("dfs", dfs.clone());
 
+        let compute_hosts = self
+            .system_config
+            .hosts
+            .iter()
+            .map(|host| {
+                let compute = Rc::new(RefCell::new(Compute::new(
+                    host.speed,
+                    host.available_cores,
+                    0,
+                    self.sim.create_context(&host.name),
+                )));
+                self.sim.add_handler(&host.name, compute.clone());
+                (
+                    actor_by_host_name[&host.name],
+                    ComputeHost {
+                        host: actor_by_host_name[&host.name],
+                        speed: host.speed,
+                        cores: host.available_cores,
+                        available_cores: host.available_cores,
+                        compute,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
         let runner = Rc::new(RefCell::new(Runner::new(
             self.placement_strategy,
-            self.system_config
-                .hosts
-                .iter()
-                .map(|host| {
-                    (
-                        actor_by_host_name[&host.name],
-                        ComputeHostInfo {
-                            available_slots: host.available_cores as usize,
-                        },
-                    )
-                })
-                .collect(),
+            compute_hosts,
             dfs.clone(),
             network.clone(),
             self.sim.create_context("runner"),
