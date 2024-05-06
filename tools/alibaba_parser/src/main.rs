@@ -227,7 +227,8 @@ fn main() {
             dag.stages.push(YamlStage {
                 tasks: (0..task.instances)
                     .map(|_| YamlTask {
-                        time_per_byte: rng.gen_range(args.time_per_byte_from..args.time_per_byte_to),
+                        time_per_byte: rng.gen_range(args.time_per_byte_from..args.time_per_byte_to)
+                            * (task.end_time - task.start_time) as f64,
                         output_size_ratio: rng.gen_range(args.output_size_ratio_from..args.output_size_ratio_to),
                     })
                     .collect(),
