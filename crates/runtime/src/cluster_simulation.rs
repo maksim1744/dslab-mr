@@ -127,7 +127,7 @@ impl DagManager {
             for (stage_id, input) in dag.input.iter() {
                 match input {
                     InputPlan::RegisterInitially { host } => {
-                        let size = dag.dag.borrow().initial_data()[&stage_id];
+                        let size = dag.dag.borrow().initial_data()[stage_id];
                         let data_id = (dag_id + self.plan.global_inputs.len()) as u64;
                         self.ctx.emit_now(
                             RegisterData {
@@ -155,7 +155,7 @@ impl DagManager {
                         self.dag_inputs[dag_id].insert(
                             *stage_id,
                             vec![DataItem::Local {
-                                size: dag.dag.borrow().initial_data()[&stage_id],
+                                size: dag.dag.borrow().initial_data()[stage_id],
                                 host,
                             }],
                         );
@@ -172,7 +172,7 @@ impl DagManager {
         for (dag_id, dag) in self.plan.dags.iter().enumerate() {
             for (stage_id, input) in dag.input.iter() {
                 if let InputPlan::RegisterOnStart { host } = input {
-                    let size = dag.dag.borrow().initial_data()[&stage_id];
+                    let size = dag.dag.borrow().initial_data()[stage_id];
                     let data_id = self.dfs.borrow_mut().next_data_id();
                     self.ctx.emit(
                         RegisterData {
