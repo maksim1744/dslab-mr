@@ -242,7 +242,7 @@ fn main() {
                 tasks: (0..task.instances)
                     .map(|_| YamlTask {
                         flops_per_byte: rng.gen_range(args.flops_per_byte_from..args.flops_per_byte_to)
-                            * (task.end_time - task.start_time) as f64,
+                            * (task.end_time - task.start_time).max(1) as f64,
                         output_size_ratio: rng.gen_range(args.output_size_ratio_from..args.output_size_ratio_to),
                     })
                     .collect(),
