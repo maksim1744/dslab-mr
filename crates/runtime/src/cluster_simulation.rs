@@ -18,6 +18,7 @@ use crate::{
     dag::Dag,
     data_item::DataItem,
     placement_strategy::DynamicPlacementStrategy,
+    run_stats::RunStats,
     runner::{NewDag, Runner},
 };
 
@@ -277,7 +278,7 @@ impl ClusterSimulation {
         }
     }
 
-    pub fn run(mut self) {
+    pub fn run(mut self) -> RunStats {
         let network = match self.network_config {
             NetworkConfig::Tree {
                 star_count,
@@ -343,5 +344,9 @@ impl ClusterSimulation {
 
         self.sim.create_context("root").emit_now(Start {}, dag_manager_id);
         self.sim.step_until_no_events();
+
+        runner.borrow_mut().finalize();
+        let runner_borrow = runner.borrow();
+        runner_borrow.run_stats().clone()
     }
 }

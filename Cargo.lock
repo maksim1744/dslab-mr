@@ -544,6 +544,7 @@ dependencies = [
  "dslab-network",
  "env_logger",
  "log",
+ "serde_yaml",
 ]
 
 [[package]]

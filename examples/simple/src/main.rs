@@ -127,5 +127,6 @@ fn main() {
             .collect(),
     );
 
-    sim.run();
+    let run_stats = sim.run();
+    println!("Run stats:\n{}", serde_yaml::to_string(&run_stats).unwrap());
 }

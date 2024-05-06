@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use dslab_core::{cast, log_debug, log_error, log_warn, Event, EventHandler, Id, SimulationContext};
+use dslab_core::{cast, log_debug, log_error, log_info, log_warn, Event, EventHandler, Id, SimulationContext};
 use dslab_network::{DataTransferCompleted, Network};
 use serde::Serialize;
 
@@ -13,7 +13,10 @@ use dslab_dfs::{
     host_info::{ChunkId, DataId},
 };
 
-use crate::placement_strategy::{DynamicPlacementStrategy, StageActions};
+use crate::{
+    placement_strategy::{DynamicPlacementStrategy, StageActions},
+    run_stats::RunStats,
+};
 
 use super::{compute_host_info::ComputeHostInfo, dag::Dag, data_item::DataItem};
 
@@ -66,6 +69,9 @@ pub struct Runner {
     task_waiting_for_transfer: HashMap<usize, u64>,
     running_stages: HashMap<(usize, usize), RunningStage>,
     waiting_for_replication: HashMap<u64, (usize, usize)>,
+    rack_by_host: HashMap<Id, usize>,
+    dag_start: HashMap<usize, f64>,
+    run_stats: RunStats,
     ctx: SimulationContext,
 }
 
@@ -77,6 +83,23 @@ impl Runner {
         network: Rc<RefCell<Network>>,
         ctx: SimulationContext,
     ) -> Self {
+        let rack_by_node = network
+            .borrow()
+            .get_nodes()
+            .iter()
+            .filter(|node_name| node_name.starts_with("host_"))
+            .map(|node_name| {
+                (
+                    network.borrow().get_node_id(node_name),
+                    node_name.split('_').nth(1).unwrap().parse::<usize>().unwrap(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let rack_by_host = compute_host_info
+            .keys()
+            .copied()
+            .map(|id| (id, rack_by_node[&network.borrow().get_location(id)]))
+            .collect();
         Runner {
             placement_strategy,
             dags: Vec::new(),
@@ -91,8 +114,30 @@ impl Runner {
             task_waiting_for_transfer: HashMap::new(),
             running_stages: HashMap::new(),
             waiting_for_replication: HashMap::new(),
+            rack_by_host,
+            dag_start: HashMap::new(),
+            run_stats: RunStats::new(),
             ctx,
         }
+    }
+
+    pub fn finalize(&mut self) {
+        if self.run_stats.completed_dag_count != self.dags.len() {
+            log_error!(
+                self.ctx,
+                "completed only {} dags out of {}",
+                self.run_stats.completed_dag_count,
+                self.dags.len()
+            );
+        } else {
+            log_info!(self.ctx, "all {} dags completed, execution finished", self.dags.len());
+        }
+        self.run_stats.total_makespan =
+            self.ctx.time() - self.dag_start.values().min_by(|a, b| a.total_cmp(b)).unwrap_or(&0.0);
+    }
+
+    pub fn run_stats(&self) -> &RunStats {
+        &self.run_stats
     }
 
     fn process_scheduler_stage_actions(&mut self, dag_id: usize, actions: StageActions) -> BTreeSet<Id> {
@@ -206,6 +251,10 @@ impl Runner {
         self.process_ready_stages(self.dags.len() - 1);
     }
 
+    fn host_with_rack(&self, host: Id) -> (Id, usize) {
+        (host, self.rack_by_host[&host])
+    }
+
     fn process_tasks_queue(&mut self, host: Id) {
         while self.compute_host_info.get(&host).unwrap().available_slots > 0
             && self
@@ -238,6 +287,11 @@ impl Runner {
                                 .borrow_mut()
                                 .transfer_data(source_host, host, size as f64, self.ctx.id());
                         transfers.insert(transfer_id);
+                        self.run_stats.register_transfer(
+                            size as f64,
+                            self.host_with_rack(source_host),
+                            self.host_with_rack(host),
+                        );
                     }
                     DataItem::Replicated { data_id, .. } => {
                         for &chunk_id in self.dfs.borrow().data_chunks(data_id).unwrap() {
@@ -249,6 +303,11 @@ impl Runner {
                                 self.ctx.id(),
                             );
                             transfers.insert(transfer_id);
+                            self.run_stats.register_transfer(
+                                self.dfs.borrow().chunk_size() as f64,
+                                self.host_with_rack(source_host),
+                                self.host_with_rack(host),
+                            );
                         }
                     }
                     DataItem::Chunk { chunk_id, .. } => {
@@ -260,6 +319,11 @@ impl Runner {
                             self.ctx.id(),
                         );
                         transfers.insert(transfer_id);
+                        self.run_stats.register_transfer(
+                            self.dfs.borrow().chunk_size() as f64,
+                            self.host_with_rack(source_host),
+                            self.host_with_rack(host),
+                        );
                     }
                 }
             }
@@ -277,6 +341,7 @@ impl Runner {
         let dag = self.dags[dag_id].borrow();
         if dag.completed_stages().len() == dag.stages().len() {
             log_debug!(self.ctx, "dag {} finished", dag_id);
+            self.run_stats.register_dag(self.ctx.time() - self.dag_start[&dag_id]);
         }
         let running_stage = self.running_stages.remove(&(dag_id, stage_id)).unwrap();
         for &connection_id in dag.outgoing_connections(stage_id).iter() {
@@ -352,6 +417,8 @@ impl EventHandler for Runner {
                     .or_default()
                     .extend(initial_data.into_iter());
                 self.new_dag(dag);
+                self.run_stats.total_dag_count += 1;
+                self.dag_start.insert(dag_id, self.ctx.time());
             }
             RegisteredData { data_id } => {
                 if let Some((dag_id, stage_id)) = self.waiting_for_replication.remove(&data_id) {
@@ -384,15 +451,14 @@ impl EventHandler for Runner {
                             task.task_id,
                             task.input_size()
                         );
-                        self.ctx.emit(
-                            TaskCompleted { task_id, host: dt.dst },
-                            self.ctx.id(),
-                            self.dags[task.dag_id]
-                                .borrow()
-                                .stage(task.stage_id)
-                                .task(task.task_id)
-                                .time(task.input_size()),
-                        );
+                        let time = self.dags[task.dag_id]
+                            .borrow()
+                            .stage(task.stage_id)
+                            .task(task.task_id)
+                            .time(task.input_size());
+                        self.run_stats.register_task_execution(time);
+                        self.ctx
+                            .emit(TaskCompleted { task_id, host: dt.dst }, self.ctx.id(), time);
                     }
                 }
             }
