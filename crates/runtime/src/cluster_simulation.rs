@@ -17,7 +17,7 @@ use crate::{
     compute_host_info::ComputeHostInfo,
     dag::Dag,
     data_item::DataItem,
-    placement_strategy::PlacementStrategy,
+    placement_strategy::DynamicPlacementStrategy,
     runner::{NewDag, Runner},
 };
 
@@ -249,7 +249,7 @@ pub struct ClusterSimulation {
     host_info: BTreeMap<String, HostInfo>,
     replication_strategy: Box<dyn ReplicationStrategy>,
     dfs_chunk_size: u64,
-    placement_strategy: Box<dyn PlacementStrategy>,
+    placement_strategy: Box<dyn DynamicPlacementStrategy>,
     compute_host_info: BTreeMap<String, ComputeHostInfo>,
 }
 
@@ -262,7 +262,7 @@ impl ClusterSimulation {
         host_info: BTreeMap<String, HostInfo>,
         replication_strategy: Box<dyn ReplicationStrategy>,
         dfs_chunk_size: u64,
-        placement_strategy: Box<dyn PlacementStrategy>,
+        placement_strategy: Box<dyn DynamicPlacementStrategy>,
         compute_host_info: BTreeMap<String, ComputeHostInfo>,
     ) -> Self {
         ClusterSimulation {

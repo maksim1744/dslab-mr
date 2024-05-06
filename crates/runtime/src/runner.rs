@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     rc::Rc,
 };
 
@@ -13,7 +13,9 @@ use dslab_dfs::{
     host_info::{ChunkId, DataId},
 };
 
-use super::{compute_host_info::ComputeHostInfo, dag::Dag, data_item::DataItem, placement_strategy::PlacementStrategy};
+use crate::placement_strategy::{DynamicPlacementStrategy, StageActions};
+
+use super::{compute_host_info::ComputeHostInfo, dag::Dag, data_item::DataItem};
 
 #[derive(Clone, Serialize)]
 pub struct NewDag {
@@ -51,13 +53,13 @@ pub struct RunningStage {
 }
 
 pub struct Runner {
-    placement_strategy: Box<dyn PlacementStrategy>,
+    placement_strategy: Box<dyn DynamicPlacementStrategy>,
     dags: Vec<Rc<RefCell<Dag>>>,
     compute_host_info: BTreeMap<Id, ComputeHostInfo>,
     dfs: Rc<RefCell<DistributedFileSystem>>,
     network: Rc<RefCell<Network>>,
-    stage_input: HashMap<(usize, usize), Vec<DataItem>>,
-    stage_input_shuffled: HashMap<(usize, usize), Vec<Vec<DataItem>>>,
+    stage_input: HashMap<usize, BTreeMap<usize, Vec<DataItem>>>,
+    stage_input_shuffled: HashMap<usize, BTreeMap<usize, Vec<Vec<DataItem>>>>,
     running_tasks: HashMap<u64, RunningTask>,
     next_running_task_id: u64,
     task_queues: BTreeMap<Id, VecDeque<u64>>,
@@ -69,7 +71,7 @@ pub struct Runner {
 
 impl Runner {
     pub fn new(
-        placement_strategy: Box<dyn PlacementStrategy>,
+        placement_strategy: Box<dyn DynamicPlacementStrategy>,
         compute_host_info: BTreeMap<Id, ComputeHostInfo>,
         dfs: Rc<RefCell<DistributedFileSystem>>,
         network: Rc<RefCell<Network>>,
@@ -93,37 +95,17 @@ impl Runner {
         }
     }
 
-    fn start_stage(&mut self, dag_id: usize, stage_id: usize) {
-        log_debug!(self.ctx, "starting stage {}.{}", dag_id, stage_id);
-        if self.stage_input.get(&(dag_id, stage_id)).is_none()
-            && self.stage_input_shuffled.get(&(dag_id, stage_id)).is_none()
-        {
-            log_error!(self.ctx, "no input found for stage {}.{}", dag_id, stage_id);
-            return;
-        }
-        self.dags[dag_id].borrow_mut().mark_started(stage_id);
+    fn process_scheduler_stage_actions(&mut self, dag_id: usize, actions: StageActions) -> BTreeSet<Id> {
+        log_debug!(self.ctx, "got actions from scheduler: {:?}", actions);
         let dag = self.dags[dag_id].borrow();
-        self.running_stages.insert(
-            (dag_id, stage_id),
-            RunningStage {
-                running_tasks: dag.stage(stage_id).tasks().len(),
-                outputs: Vec::new(),
-                waiting_for_replication: HashSet::new(),
-            },
-        );
-        let task_placements = self.placement_strategy.place_stage(
-            dag.stage(stage_id),
-            &dag,
-            self.stage_input.get(&(dag_id, stage_id)).unwrap_or(&Vec::new()),
-            self.stage_input_shuffled
-                .get(&(dag_id, stage_id))
-                .unwrap_or(&Vec::new()),
-            &self.dfs.borrow(),
-            &self.compute_host_info,
-            &self.network.borrow(),
-        );
-
-        for (task_id, placement) in task_placements.into_iter().enumerate() {
+        let mut affected_hosts = BTreeSet::new();
+        let stage_id = actions.stage_id;
+        if !dag.running_stages().contains(&stage_id) {
+            log_error!(self.ctx, "stage {}.{} is not ready yet", dag_id, stage_id);
+            return affected_hosts;
+        }
+        for placement in actions.task_placements.into_iter() {
+            let task_id = placement.task_id;
             if !self.compute_host_info.contains_key(&placement.host) {
                 log_error!(
                     self.ctx,
@@ -140,13 +122,22 @@ impl Runner {
                 task_id,
                 placement.host
             );
+            let mut input = placement.input;
+            if let Some(input_shuffled) = self
+                .stage_input_shuffled
+                .get(&dag_id)
+                .and_then(|input| input.get(&stage_id))
+                .map(|stage_input| &stage_input[task_id])
+            {
+                input.extend(input_shuffled);
+            }
             self.running_tasks.insert(
                 self.next_running_task_id,
                 RunningTask {
                     dag_id,
                     stage_id,
                     task_id,
-                    input: placement.input,
+                    input,
                     waiting_for_transfers: HashSet::new(),
                 },
             );
@@ -155,12 +146,59 @@ impl Runner {
                 .or_default()
                 .push_back(self.next_running_task_id);
             self.next_running_task_id += 1;
+            affected_hosts.insert(placement.host);
         }
-        drop(dag);
-        let hosts = self.task_queues.keys().copied().collect::<Vec<_>>();
-        for &host in hosts.iter() {
+        affected_hosts
+    }
+
+    fn process_scheduler_actions(&mut self, dag_id: usize, actions: Vec<StageActions>) {
+        let mut affected_hosts = BTreeSet::new();
+        for stage_action in actions.into_iter() {
+            affected_hosts.extend(self.process_scheduler_stage_actions(dag_id, stage_action));
+        }
+        for host in affected_hosts.into_iter() {
             self.process_tasks_queue(host);
         }
+    }
+
+    fn start_stage(&mut self, dag_id: usize, stage_id: usize) {
+        log_debug!(self.ctx, "starting stage {}.{}", dag_id, stage_id);
+        if self
+            .stage_input
+            .get(&dag_id)
+            .and_then(|dag_input| dag_input.get(&stage_id))
+            .is_none()
+            && self
+                .stage_input_shuffled
+                .get(&dag_id)
+                .and_then(|dag_input| dag_input.get(&stage_id))
+                .is_none()
+        {
+            log_error!(self.ctx, "no input found for stage {}.{}", dag_id, stage_id);
+            return;
+        }
+        self.dags[dag_id].borrow_mut().mark_started(stage_id);
+        let dag = self.dags[dag_id].borrow();
+        self.running_stages.insert(
+            (dag_id, stage_id),
+            RunningStage {
+                running_tasks: dag.stage(stage_id).tasks().len(),
+                outputs: Vec::new(),
+                waiting_for_replication: HashSet::new(),
+            },
+        );
+
+        let actions = self.placement_strategy.on_stage_ready(
+            stage_id,
+            &dag,
+            self.stage_input.get(&dag_id).unwrap_or(&BTreeMap::new()),
+            self.stage_input_shuffled.get(&dag_id).unwrap_or(&BTreeMap::new()),
+            &self.dfs.borrow(),
+            &self.compute_host_info,
+            &self.network.borrow(),
+        );
+        drop(dag);
+        self.process_scheduler_actions(dag_id, actions);
     }
 
     fn new_dag(&mut self, dag: Rc<RefCell<Dag>>) {
@@ -251,19 +289,35 @@ impl Runner {
                 );
                 let stage_input = self
                     .stage_input_shuffled
-                    .entry((dag_id, dag.connection(connection_id).to))
+                    .entry(dag_id)
+                    .or_default()
+                    .entry(dag.connection(connection_id).to)
                     .or_insert(vec![vec![]; shuffled_outputs.len()]);
                 for (i, data_items) in shuffled_outputs.into_iter().enumerate() {
                     stage_input[i].extend(data_items);
                 }
             } else {
                 self.stage_input
-                    .entry((dag_id, dag.connection(connection_id).to))
+                    .entry(dag_id)
+                    .or_default()
+                    .entry(dag.connection(connection_id).to)
                     .or_default()
                     .extend(outputs);
             }
         }
+
+        let actions = self.placement_strategy.on_stage_completed(
+            stage_id,
+            &dag,
+            self.stage_input.get(&dag_id).unwrap_or(&BTreeMap::new()),
+            self.stage_input_shuffled.get(&dag_id).unwrap_or(&BTreeMap::new()),
+            &self.dfs.borrow(),
+            &self.compute_host_info,
+            &self.network.borrow(),
+        );
         drop(dag);
+        self.process_scheduler_actions(dag_id, actions);
+
         self.process_ready_stages(dag_id);
     }
 
@@ -294,7 +348,9 @@ impl EventHandler for Runner {
                 log_debug!(self.ctx, "got new dag with {} stages", dag.borrow().stages().len());
                 let dag_id = self.dags.len();
                 self.stage_input
-                    .extend(initial_data.into_iter().map(|(stage, input)| ((dag_id, stage), input)));
+                    .entry(dag_id)
+                    .or_default()
+                    .extend(initial_data.into_iter());
                 self.new_dag(dag);
             }
             RegisteredData { data_id } => {
@@ -379,7 +435,19 @@ impl EventHandler for Runner {
                 }
                 drop(dag);
                 self.compute_host_info.get_mut(&host).unwrap().available_slots += 1;
-                self.process_tasks_queue(host);
+
+                let actions = self.placement_strategy.on_task_completed(
+                    task.stage_id,
+                    task.task_id,
+                    &self.dags[task.dag_id].borrow(),
+                    self.stage_input.get(&task.dag_id).unwrap_or(&BTreeMap::new()),
+                    self.stage_input_shuffled.get(&task.dag_id).unwrap_or(&BTreeMap::new()),
+                    &self.dfs.borrow(),
+                    &self.compute_host_info,
+                    &self.network.borrow(),
+                );
+                self.process_scheduler_actions(task.dag_id, actions);
+
                 let task = &self.running_tasks[&task_id];
                 let running_stage = self.running_stages.get(&(task.dag_id, task.stage_id)).unwrap();
                 if running_stage.running_tasks == 0 && running_stage.waiting_for_replication.is_empty() {

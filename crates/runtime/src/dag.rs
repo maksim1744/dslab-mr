@@ -115,6 +115,7 @@ pub struct Dag {
     connections: Vec<Connection>,
     stage_dependencies: Vec<Vec<Connection>>,
     ready_stages: BTreeSet<usize>,
+    running_stages: BTreeSet<usize>,
     completed_stages: BTreeSet<usize>,
     need_dependencies: Vec<usize>,
     outgoing_connections: Vec<Vec<usize>>,
@@ -128,6 +129,7 @@ impl Dag {
             connections: Vec::new(),
             stage_dependencies: Vec::new(),
             ready_stages: BTreeSet::new(),
+            running_stages: BTreeSet::new(),
             completed_stages: BTreeSet::new(),
             need_dependencies: Vec::new(),
             outgoing_connections: Vec::new(),
@@ -170,10 +172,12 @@ impl Dag {
 
     pub fn mark_started(&mut self, stage_id: usize) {
         self.ready_stages.remove(&stage_id);
+        self.running_stages.insert(stage_id);
     }
 
     pub fn mark_completed(&mut self, stage_id: usize) {
         self.ready_stages.remove(&stage_id);
+        self.running_stages.remove(&stage_id);
         self.completed_stages.insert(stage_id);
         for &connection in self.outgoing_connections[stage_id].iter() {
             let to = self.connections[connection].to;
@@ -186,6 +190,10 @@ impl Dag {
 
     pub fn ready_stages(&self) -> &BTreeSet<usize> {
         &self.ready_stages
+    }
+
+    pub fn running_stages(&self) -> &BTreeSet<usize> {
+        &self.running_stages
     }
 
     pub fn completed_stages(&self) -> &BTreeSet<usize> {

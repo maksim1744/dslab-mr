@@ -58,7 +58,7 @@ impl PlacementStrategy for SimplePlacementStrategy {
         stage: &Stage,
         _graph: &Dag,
         input_data: &[DataItem],
-        input_data_shuffled: &[Vec<DataItem>],
+        _input_data_shuffled: &[Vec<DataItem>],
         dfs: &DistributedFileSystem,
         _compute_host_info: &BTreeMap<Id, ComputeHostInfo>,
         _network: &Network,
@@ -87,9 +87,6 @@ impl PlacementStrategy for SimplePlacementStrategy {
         for (i, &chunk_id) in my_data_items.iter().enumerate() {
             let target_task = i % result.len();
             result[target_task].input.push(chunk_id);
-        }
-        for (i, shuffled_data) in input_data_shuffled.iter().enumerate() {
-            result[i].input.extend(shuffled_data);
         }
         result
     }
