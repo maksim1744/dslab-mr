@@ -34,6 +34,10 @@ struct Args {
     #[arg(long, default_value_t = 1)]
     min_tasks_in_job: usize,
 
+    /// Allow multiple outgoing edges (unlike for original RDD).
+    #[arg(long, default_value_t = false)]
+    allow_multiple_outgoing_edges: bool,
+
     /// Bounds of uniform distribute for time_per_byte.
     #[arg(long, default_value_t = 0.001)]
     time_per_byte_from: f64,
@@ -157,6 +161,17 @@ fn read_batch_task(args: &Args) -> BTreeMap<i64, Vec<BatchTask>> {
             .iter()
             .all(|task| args.start_time <= task.start_time && task.end_time <= args.end_time)
     });
+    if !args.allow_multiple_outgoing_edges {
+        job_tasks.retain(|_, tasks| {
+            let mut outgoing_edges: HashMap<i64, usize> = HashMap::new();
+            for task in tasks.iter() {
+                for &dependency in task.dependencies.iter() {
+                    *outgoing_edges.entry(dependency).or_default() += 1;
+                }
+            }
+            outgoing_edges.values().all(|&cnt| cnt <= 1)
+        });
+    }
     job_tasks.retain(|_, tasks| tasks.iter().all(|task| task.instances > 0));
     job_tasks.retain(|_, tasks| {
         let task_ids = tasks.iter().map(|t| t.task_id).collect::<HashSet<_>>();
