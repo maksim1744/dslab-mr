@@ -7,7 +7,13 @@ use std::{
 
 use clap::Parser;
 use csv::ReaderBuilder;
-use dslab_mr::parser::{ShuffleType, StageInitialData, YamlConnection, YamlDag, YamlStage, YamlTask};
+use dslab_mr::{
+    cluster_simulation::InputPlan,
+    parser::{
+        ShuffleType, StageInitialData, YamlConnection, YamlDag, YamlDagPlan, YamlSimulationPlan, YamlStage,
+        YamlStageInputPlan, YamlTask,
+    },
+};
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use serde::Deserialize;
@@ -37,6 +43,10 @@ struct Args {
     /// Allow multiple outgoing edges (unlike for original RDD).
     #[arg(long, default_value_t = false)]
     allow_multiple_outgoing_edges: bool,
+
+    /// Upload inputs for all jobs to dfs in advance before starting execution.
+    #[arg(long, default_value_t = false)]
+    upload_job_inputs_in_advance: bool,
 
     /// Bounds of uniform distribute for time_per_byte.
     #[arg(long, default_value_t = 0.001)]
@@ -197,6 +207,10 @@ fn main() {
     let mut rng = Pcg64::seed_from_u64(123);
 
     let jobs = read_batch_task(&args);
+    let mut plan = YamlSimulationPlan {
+        dags: Vec::new(),
+        global_inputs: Vec::new(),
+    };
     for (job_id, tasks) in jobs.into_iter() {
         let mut dag = YamlDag {
             initial_data: tasks
@@ -248,9 +262,37 @@ fn main() {
                     .collect(),
             });
         }
-        File::create(dags_directory.join(format!("j_{job_id}.yaml")))
+        let dag_name = format!("j_{job_id}");
+        plan.dags.push(YamlDagPlan {
+            start_time: tasks
+                .iter()
+                .map(|task| task.start_time - args.start_time)
+                .min()
+                .unwrap() as f64,
+            dag: dag_name.clone(),
+            input: dag
+                .initial_data
+                .iter()
+                .map(|input| YamlStageInputPlan {
+                    stage: input.stage,
+                    input: match args.upload_job_inputs_in_advance {
+                        false => InputPlan::RegisterOnStart {
+                            host: "random".to_string(),
+                        },
+                        true => InputPlan::RegisterInitially {
+                            host: "random".to_string(),
+                        },
+                    },
+                })
+                .collect(),
+        });
+        File::create(dags_directory.join(format!("{dag_name}.yaml")))
             .unwrap_or_else(|_| panic!("Can't create file for dag {}", job_id))
             .write_all(serde_yaml::to_string(&dag).unwrap().as_bytes())
             .unwrap_or_else(|_| panic!("Can't write dag {}", job_id));
     }
+    File::create(args.output_path.join("plan.yaml"))
+        .expect("Can't create file for plan.yaml")
+        .write_all(serde_yaml::to_string(&plan).unwrap().as_bytes())
+        .expect("Can't write plan to file");
 }

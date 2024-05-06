@@ -92,8 +92,8 @@ impl Dag {
 
 #[derive(Serialize, Deserialize)]
 pub struct YamlStageInputPlan {
-    stage: usize,
-    input: InputPlan,
+    pub stage: usize,
+    pub input: InputPlan,
 }
 
 #[derive(Serialize, Deserialize)]

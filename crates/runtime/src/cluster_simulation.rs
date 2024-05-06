@@ -74,6 +74,7 @@ struct DagManager {
     plan: SimulationPlan,
     dfs: Rc<RefCell<DistributedFileSystem>>,
     actor_by_host_name: HashMap<String, Id>,
+    all_hosts: Vec<Id>,
     runner_id: Id,
     left_registrations: usize,
     start_time: f64,
@@ -92,10 +93,12 @@ impl DagManager {
         ctx: SimulationContext,
     ) -> Self {
         let dags_count = plan.dags.len();
+        let all_hosts = actor_by_host_name.values().copied().collect();
         Self {
             plan,
             dfs,
             actor_by_host_name,
+            all_hosts,
             runner_id,
             left_registrations: 0,
             start_time: 0.0,
@@ -111,7 +114,7 @@ impl DagManager {
             self.ctx.emit_now(
                 RegisterData {
                     size: global_input.size,
-                    host: self.actor_by_host_name[&global_input.host],
+                    host: self.get_host_by_name(&global_input.host),
                     data_id: id as u64,
                     need_to_replicate: true,
                 },
@@ -128,7 +131,7 @@ impl DagManager {
                         self.ctx.emit_now(
                             RegisterData {
                                 size,
-                                host: self.actor_by_host_name[host],
+                                host: self.get_host_by_name(host),
                                 data_id,
                                 need_to_replicate: true,
                             },
@@ -147,11 +150,12 @@ impl DagManager {
                         );
                     }
                     InputPlan::Local { host } => {
+                        let host = self.get_host_by_name(host);
                         self.dag_inputs[dag_id].insert(
                             *stage_id,
                             vec![DataItem::Local {
                                 size: dag.dag.borrow().initial_data()[&stage_id],
-                                host: self.actor_by_host_name[host],
+                                host,
                             }],
                         );
                     }
@@ -172,7 +176,7 @@ impl DagManager {
                     self.ctx.emit(
                         RegisterData {
                             size,
-                            host: self.actor_by_host_name[host],
+                            host: self.get_host_by_name(host),
                             data_id,
                             need_to_replicate: true,
                         },
@@ -194,6 +198,14 @@ impl DagManager {
                     dag.start_time,
                 );
             }
+        }
+    }
+
+    fn get_host_by_name(&self, host_name: &str) -> Id {
+        if host_name == "random" {
+            self.all_hosts[self.ctx.gen_range(0..self.all_hosts.len())]
+        } else {
+            self.actor_by_host_name[host_name]
         }
     }
 }
