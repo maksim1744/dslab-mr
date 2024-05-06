@@ -6,7 +6,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::cluster_simulation::{DagPlan, GlobalInputPlan, InputPlan, SimulationPlan};
+use crate::{
+    cluster_simulation::{DagPlan, GlobalInputPlan, InputPlan, SimulationPlan},
+    system::SystemConfig,
+};
 
 use super::dag::{Dag, Shuffle, SimpleTask, Task, UniformShuffle};
 
@@ -135,5 +138,14 @@ impl SimulationPlan {
         }
 
         plan
+    }
+}
+
+impl SystemConfig {
+    pub fn from_yaml<P: AsRef<Path>>(file: P) -> Self {
+        serde_yaml::from_str(
+            &std::fs::read_to_string(&file).unwrap_or_else(|_| panic!("Can't read file {}", file.as_ref().display())),
+        )
+        .unwrap_or_else(|e| panic!("Can't parse YAML from file {}: {e:?}", file.as_ref().display()))
     }
 }

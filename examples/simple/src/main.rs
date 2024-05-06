@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    io::Write,
-};
+use std::{collections::BTreeMap, io::Write};
 
 use env_logger::Builder;
 
@@ -12,11 +9,12 @@ use dslab_dfs::{
     replication_strategy::ReplicationStrategy,
 };
 use dslab_mr::{
-    cluster_simulation::{ClusterSimulation, NetworkConfig, SimulationPlan},
+    cluster_simulation::{ClusterSimulation, SimulationPlan},
     compute_host_info::ComputeHostInfo,
     dag::{Dag, Stage},
     data_item::DataItem,
     placement_strategy::{PlacementStrategy, TaskPlacement},
+    system::SystemConfig,
 };
 use dslab_network::Network;
 
@@ -100,33 +98,11 @@ fn main() {
     let sim = ClusterSimulation::new(
         123,
         SimulationPlan::from_yaml("plan.yaml", ".".into()),
-        NetworkConfig::Tree {
-            star_count: 3,
-            hosts_per_star: 2,
-        },
-        (0..3)
-            .flat_map(|star| {
-                (0..2).map(move |host| {
-                    (
-                        format!("host_{star}_{host}"),
-                        HostInfo {
-                            free_space: 1024,
-                            chunks: BTreeSet::new(),
-                        },
-                    )
-                })
-            })
-            .collect(),
+        SystemConfig::from_yaml("system.yaml"),
         Box::new(SimpleReplicationStrategy::new()),
-        16,
         Box::new(SimplePlacementStrategy {}),
-        (0..3)
-            .flat_map(|star| {
-                (0..2).map(move |host| (format!("host_{star}_{host}"), ComputeHostInfo { available_slots: 4 }))
-            })
-            .collect(),
     );
 
     let run_stats = sim.run();
-    println!("Run stats:\n{}", serde_yaml::to_string(&run_stats).unwrap());
+    println!("\nRun stats:\n{}", serde_yaml::to_string(&run_stats).unwrap());
 }

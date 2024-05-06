@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeSet, HashMap},
     rc::Rc,
 };
 
@@ -20,6 +20,7 @@ use crate::{
     placement_strategy::DynamicPlacementStrategy,
     run_stats::RunStats,
     runner::{NewDag, Runner},
+    system::{NetworkConfig, SystemConfig},
 };
 
 #[derive(Serialize, Deserialize)]
@@ -46,18 +47,6 @@ pub struct DagPlan {
 pub struct SimulationPlan {
     pub dags: Vec<DagPlan>,
     pub global_inputs: Vec<GlobalInputPlan>,
-}
-
-pub enum NetworkConfig {
-    Tree {
-        star_count: usize,
-        hosts_per_star: usize,
-    },
-    FatTree {
-        l2_switch_count: usize,
-        l1_switch_count: usize,
-        hosts_per_switch: usize,
-    },
 }
 
 #[derive(Clone, Serialize)]
@@ -246,12 +235,9 @@ impl EventHandler for DagManager {
 pub struct ClusterSimulation {
     pub sim: Simulation,
     plan: SimulationPlan,
-    network_config: NetworkConfig,
-    host_info: BTreeMap<String, HostInfo>,
+    system_config: SystemConfig,
     replication_strategy: Box<dyn ReplicationStrategy>,
-    dfs_chunk_size: u64,
     placement_strategy: Box<dyn DynamicPlacementStrategy>,
-    compute_host_info: BTreeMap<String, ComputeHostInfo>,
 }
 
 impl ClusterSimulation {
@@ -259,27 +245,21 @@ impl ClusterSimulation {
     pub fn new(
         seed: u64,
         plan: SimulationPlan,
-        network_config: NetworkConfig,
-        host_info: BTreeMap<String, HostInfo>,
+        system_config: SystemConfig,
         replication_strategy: Box<dyn ReplicationStrategy>,
-        dfs_chunk_size: u64,
         placement_strategy: Box<dyn DynamicPlacementStrategy>,
-        compute_host_info: BTreeMap<String, ComputeHostInfo>,
     ) -> Self {
         ClusterSimulation {
             sim: Simulation::new(seed),
             plan,
-            network_config,
-            host_info,
+            system_config,
             replication_strategy,
-            dfs_chunk_size,
             placement_strategy,
-            compute_host_info,
         }
     }
 
     pub fn run(mut self) -> RunStats {
-        let network = match self.network_config {
+        let network = match self.system_config.network {
             NetworkConfig::Tree {
                 star_count,
                 hosts_per_star,
@@ -308,14 +288,23 @@ impl ClusterSimulation {
         }
 
         let dfs = DistributedFileSystem::new(
-            self.host_info
-                .into_iter()
-                .map(|(k, v)| (actor_by_host_name[&k], v))
+            self.system_config
+                .hosts
+                .iter()
+                .map(|host| {
+                    (
+                        actor_by_host_name[&host.name],
+                        HostInfo {
+                            free_space: host.available_space,
+                            chunks: BTreeSet::new(),
+                        },
+                    )
+                })
                 .collect(),
             HashMap::new(),
             network.clone(),
             self.replication_strategy,
-            self.dfs_chunk_size,
+            self.system_config.chunk_size,
             self.sim.create_context("dfs"),
         );
         let dfs = Rc::new(RefCell::new(dfs));
@@ -323,9 +312,17 @@ impl ClusterSimulation {
 
         let runner = Rc::new(RefCell::new(Runner::new(
             self.placement_strategy,
-            self.compute_host_info
-                .into_iter()
-                .map(|(k, v)| (actor_by_host_name[&k], v))
+            self.system_config
+                .hosts
+                .iter()
+                .map(|host| {
+                    (
+                        actor_by_host_name[&host.name],
+                        ComputeHostInfo {
+                            available_slots: host.available_cores as usize,
+                        },
+                    )
+                })
                 .collect(),
             dfs.clone(),
             network.clone(),
