@@ -9,7 +9,7 @@ pub struct RunStats {
     pub average_dag_makespan: f64,
     pub min_dag_makespan: f64,
     pub max_dag_makespan: f64,
-    pub total_cpu_time: f64,
+    pub total_cpu_flops: f64,
     pub total_network_traffic: f64,
     pub network_traffic_between_racks: f64,
     pub network_traffic_between_hosts: f64,
@@ -24,7 +24,7 @@ impl RunStats {
             average_dag_makespan: 0.0,
             min_dag_makespan: f64::MAX,
             max_dag_makespan: 0.0,
-            total_cpu_time: 0.0,
+            total_cpu_flops: 0.0,
             total_network_traffic: 0.0,
             network_traffic_between_racks: 0.0,
             network_traffic_between_hosts: 0.0,
@@ -51,8 +51,8 @@ impl RunStats {
         }
     }
 
-    pub fn register_task_execution(&mut self, time: f64) {
-        self.total_cpu_time += time;
+    pub fn register_task_execution(&mut self, flops: f64) {
+        self.total_cpu_flops += flops;
     }
 }
 

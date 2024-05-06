@@ -48,13 +48,13 @@ struct Args {
     #[arg(long, default_value_t = false)]
     upload_job_inputs_in_advance: bool,
 
-    /// Bounds of uniform distribute for time_per_byte.
+    /// Bounds of uniform distribute for flops_per_byte.
     #[arg(long, default_value_t = 0.001)]
-    time_per_byte_from: f64,
+    flops_per_byte_from: f64,
 
-    /// Bounds of uniform distribute for time_per_byte.
+    /// Bounds of uniform distribute for flops_per_byte.
     #[arg(long, default_value_t = 0.002)]
-    time_per_byte_to: f64,
+    flops_per_byte_to: f64,
 
     /// Bounds of uniform distribute for output_size_ratio.
     #[arg(long, default_value_t = 0.5)]
@@ -241,7 +241,7 @@ fn main() {
             dag.stages.push(YamlStage {
                 tasks: (0..task.instances)
                     .map(|_| YamlTask {
-                        time_per_byte: rng.gen_range(args.time_per_byte_from..args.time_per_byte_to)
+                        flops_per_byte: rng.gen_range(args.flops_per_byte_from..args.flops_per_byte_to)
                             * (task.end_time - task.start_time) as f64,
                         output_size_ratio: rng.gen_range(args.output_size_ratio_from..args.output_size_ratio_to),
                     })

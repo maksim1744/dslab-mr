@@ -3,14 +3,14 @@ initial_data:
     size: 256
 stages:
   - tasks:
-    - time_per_byte: 300
+    - flops_per_byte: 300
       output_size_ratio: 2
-    - time_per_byte: 350
+    - flops_per_byte: 350
       output_size_ratio: 2
   - tasks:
-    - time_per_byte: 100
+    - flops_per_byte: 100
       output_size_ratio: 0.1
-    - time_per_byte: 110
+    - flops_per_byte: 110
       output_size_ratio: 0.1
     upload_result_to_dfs: true
     connections:

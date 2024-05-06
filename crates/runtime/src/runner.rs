@@ -419,18 +419,18 @@ impl Runner {
             task.task_id,
             task.input_size()
         );
-        let time = self.dags[task.dag_id]
+        let flops = self.dags[task.dag_id]
             .borrow()
             .stage(task.stage_id)
             .task(task.task_id)
-            .time(task.input_size());
-        self.run_stats.register_task_execution(time);
+            .flops(task.input_size());
+        self.run_stats.register_task_execution(flops);
 
         let computation_id =
             self.compute_hosts[&host]
                 .compute
                 .borrow_mut()
-                .run(time, 0, 1, 1, CoresDependency::Linear, self.ctx.id());
+                .run(flops, 0, 1, 1, CoresDependency::Linear, self.ctx.id());
         self.computations.insert(
             computation_id,
             TaskCompleted {

@@ -6,21 +6,21 @@ use super::data_item::DataItem;
 
 pub trait Task {
     fn id(&self) -> u64;
-    fn time(&self, input_size: u64) -> f64;
+    fn flops(&self, input_size: u64) -> f64;
     fn output_size(&self, input_size: u64) -> u64;
 }
 
 pub struct SimpleTask {
     id: u64,
-    time_per_byte: f64,
+    flops_per_byte: f64,
     output_size_ratio: f64,
 }
 
 impl SimpleTask {
-    pub fn new(id: u64, time_per_byte: f64, output_size_ratio: f64) -> Self {
+    pub fn new(id: u64, flops_per_byte: f64, output_size_ratio: f64) -> Self {
         SimpleTask {
             id,
-            time_per_byte,
+            flops_per_byte,
             output_size_ratio,
         }
     }
@@ -31,8 +31,8 @@ impl Task for SimpleTask {
         self.id
     }
 
-    fn time(&self, input_size: u64) -> f64 {
-        self.time_per_byte * input_size as f64
+    fn flops(&self, input_size: u64) -> f64 {
+        self.flops_per_byte * input_size as f64
     }
 
     fn output_size(&self, input_size: u64) -> u64 {
