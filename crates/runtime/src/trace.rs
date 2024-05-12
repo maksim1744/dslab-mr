@@ -22,6 +22,14 @@ pub enum TraceEvent {
     },
 }
 
+impl TraceEvent {
+    pub fn time(&self) -> f64 {
+        match self {
+            TraceEvent::TaskStarted { time, .. } | TraceEvent::TaskCompleted { time, .. } => *time,
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Trace {
     pub hosts: Vec<HostConfig>,

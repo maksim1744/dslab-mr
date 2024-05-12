@@ -1,0 +1,184 @@
+{
+  "hosts": [
+    {
+      "name": "host_0_0",
+      "speed": 1.0,
+      "available_space": 1024,
+      "available_cores": 4,
+      "available_memory": 1024
+    },
+    {
+      "name": "host_0_1",
+      "speed": 1.0,
+      "available_space": 1024,
+      "available_cores": 4,
+      "available_memory": 1024
+    },
+    {
+      "name": "host_1_0",
+      "speed": 1.0,
+      "available_space": 1024,
+      "available_cores": 4,
+      "available_memory": 1024
+    },
+    {
+      "name": "host_1_1",
+      "speed": 1.0,
+      "available_space": 1024,
+      "available_cores": 4,
+      "available_memory": 1024
+    },
+    {
+      "name": "host_2_0",
+      "speed": 1.0,
+      "available_space": 1024,
+      "available_cores": 4,
+      "available_memory": 1024
+    },
+    {
+      "name": "host_2_1",
+      "speed": 1.0,
+      "available_space": 1024,
+      "available_cores": 4,
+      "available_memory": 1024
+    }
+  ],
+  "events": [
+    {
+      "type": "TaskStarted",
+      "time": 0.5438999999999998,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 1,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_1"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 0.5444,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 0,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_0"
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 38400.5444,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 0
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 44800.5439,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 1
+    },
+    {
+      "type": "TaskStarted",
+      "time": 44800.8001,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 0,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_0"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 44800.8001,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 1,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_1"
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 70400.8001,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 0
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 72960.8001,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 1
+    },
+    {
+      "type": "TaskStarted",
+      "time": 100001.00819999997,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 1,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_1"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 100001.00859999999,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 0,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_0"
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 138401.0086,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 0
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 144801.00819999998,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 1
+    },
+    {
+      "type": "TaskStarted",
+      "time": 144801.2644,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 0,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_0"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 144801.2644,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 1,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_0_1"
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 170401.2644,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 0
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 172961.2644,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 1
+    }
+  ]
+}

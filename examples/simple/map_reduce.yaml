@@ -4,20 +4,20 @@ initial_data:
 stages:
   - tasks:
     - cores: 1
-      memory: 256
+      memory: 512
       flops_per_byte: 300
       output_size_ratio: 2
     - cores: 1
-      memory: 256
+      memory: 512
       flops_per_byte: 350
       output_size_ratio: 2
   - tasks:
     - cores: 1
-      memory: 256
+      memory: 512
       flops_per_byte: 100
       output_size_ratio: 0.1
     - cores: 1
-      memory: 256
+      memory: 512
       flops_per_byte: 110
       output_size_ratio: 0.1
     upload_result_to_dfs: true
