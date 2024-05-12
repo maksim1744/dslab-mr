@@ -43,6 +43,7 @@ pub struct RunningTask {
     task_id: usize,
     input: Vec<DataItem>,
     waiting_for_transfers: HashSet<usize>,
+    start_time: f64,
 }
 
 impl RunningTask {
@@ -103,6 +104,8 @@ impl Runner {
             .copied()
             .map(|id| (id, rack_by_node[&network.borrow().get_location(id)]))
             .collect();
+        let total_cores = compute_hosts.values().map(|host| host.available_cores).sum();
+        let total_memory = compute_hosts.values().map(|host| host.available_memory).sum();
         Runner {
             placement_strategy,
             dags: Vec::new(),
@@ -120,7 +123,7 @@ impl Runner {
             waiting_for_replication: HashMap::new(),
             rack_by_host,
             dag_start: HashMap::new(),
-            run_stats: RunStats::new(),
+            run_stats: RunStats::new(total_cores, total_memory),
             ctx,
         }
     }
@@ -136,8 +139,8 @@ impl Runner {
         } else {
             log_info!(self.ctx, "all {} dags completed, execution finished", self.dags.len());
         }
-        self.run_stats.total_makespan =
-            self.ctx.time() - self.dag_start.values().min_by(|a, b| a.total_cmp(b)).unwrap_or(&0.0);
+        self.run_stats
+            .finalize(self.ctx.time() - self.dag_start.values().min_by(|a, b| a.total_cmp(b)).unwrap_or(&0.0));
     }
 
     pub fn run_stats(&self) -> &RunStats {
@@ -188,6 +191,7 @@ impl Runner {
                     task_id,
                     input,
                     waiting_for_transfers: HashSet::new(),
+                    start_time: 0.0,
                 },
             );
             self.task_queues
@@ -419,6 +423,7 @@ impl Runner {
 
     fn start_task(&mut self, running_task_id: u64, host: Id) {
         let task = self.running_tasks.get_mut(&running_task_id).unwrap();
+        task.start_time = self.ctx.time();
         log_debug!(
             self.ctx,
             "started execution of task {}.{}.{} with input size {}",
@@ -535,6 +540,10 @@ impl EventHandler for Runner {
                 let dag_task = dag.stage(task.stage_id).task(task.task_id);
                 self.compute_hosts.get_mut(&host).unwrap().available_cores += dag_task.cores();
                 self.compute_hosts.get_mut(&host).unwrap().available_memory += dag_task.memory();
+                self.run_stats
+                    .register_cpu_utilization((self.ctx.time() - task.start_time) * dag_task.cores() as f64);
+                self.run_stats
+                    .register_memory_utilization((self.ctx.time() - task.start_time) * dag_task.memory() as f64);
                 drop(dag);
 
                 let actions = self.placement_strategy.on_task_completed(
