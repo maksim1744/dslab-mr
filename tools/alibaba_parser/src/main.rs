@@ -194,6 +194,16 @@ fn read_batch_task(args: &Args) -> BTreeMap<i64, Vec<BatchTask>> {
             .all(|t| task_ids.contains(&t))
     });
     println!("batch_task.csv: found {} jobs", job_tasks.len());
+    if !job_tasks.is_empty() {
+        let mut jobs_by_task_count: BTreeMap<usize, usize> = BTreeMap::new();
+        for job in job_tasks.values() {
+            *jobs_by_task_count.entry(job.len()).or_default() += 1;
+        }
+        println!("distribution by number of tasks");
+        for (k, v) in jobs_by_task_count.into_iter() {
+            println!("    {: <4}: {}", k, v);
+        }
+    }
     job_tasks
 }
 
