@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum NetworkConfig {
     Tree {
@@ -14,7 +14,7 @@ pub enum NetworkConfig {
     },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct HostConfig {
     pub name: String,
     pub speed: f64,
@@ -23,7 +23,7 @@ pub struct HostConfig {
     pub available_memory: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SystemConfig {
     pub network: NetworkConfig,
     pub chunk_size: u64,

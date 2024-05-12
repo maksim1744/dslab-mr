@@ -7,3 +7,4 @@ pub mod placement_strategy;
 pub mod run_stats;
 pub mod runner;
 pub mod system;
+pub mod trace;

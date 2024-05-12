@@ -6,6 +6,7 @@ use dslab_core::Id;
 #[derive(Clone)]
 pub struct ComputeHost {
     pub host: Id,
+    pub name: String,
     pub speed: f64,
     pub cores: u32,
     pub available_cores: u32,

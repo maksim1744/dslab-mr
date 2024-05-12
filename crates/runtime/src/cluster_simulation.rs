@@ -1,6 +1,9 @@
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
+    fs::File,
+    io::Write,
+    path::PathBuf,
     rc::Rc,
 };
 
@@ -239,6 +242,7 @@ pub struct ClusterSimulation {
     system_config: SystemConfig,
     replication_strategy: Box<dyn ReplicationStrategy>,
     placement_strategy: Box<dyn DynamicPlacementStrategy>,
+    trace_path: Option<PathBuf>,
 }
 
 impl ClusterSimulation {
@@ -249,6 +253,7 @@ impl ClusterSimulation {
         system_config: SystemConfig,
         replication_strategy: Box<dyn ReplicationStrategy>,
         placement_strategy: Box<dyn DynamicPlacementStrategy>,
+        trace_path: Option<PathBuf>,
     ) -> Self {
         ClusterSimulation {
             sim: Simulation::new(seed),
@@ -256,6 +261,7 @@ impl ClusterSimulation {
             system_config,
             replication_strategy,
             placement_strategy,
+            trace_path,
         }
     }
 
@@ -327,6 +333,7 @@ impl ClusterSimulation {
                     actor_by_host_name[&host.name],
                     ComputeHost {
                         host: actor_by_host_name[&host.name],
+                        name: host.name.clone(),
                         speed: host.speed,
                         cores: host.available_cores,
                         available_cores: host.available_cores,
@@ -361,6 +368,13 @@ impl ClusterSimulation {
 
         runner.borrow_mut().finalize();
         let runner_borrow = runner.borrow();
+
+        if let Some(path) = self.trace_path {
+            File::create(path)
+                .expect("Can't create trace file")
+                .write_all(serde_json::to_string_pretty(runner_borrow.trace()).unwrap().as_bytes())
+                .expect("Can't write trace to file");
+        }
         runner_borrow.run_stats().clone()
     }
 }

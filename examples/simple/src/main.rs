@@ -101,6 +101,7 @@ fn main() {
         SystemConfig::from_yaml("system.yaml"),
         Box::new(SimpleReplicationStrategy::new()),
         Box::new(SimplePlacementStrategy {}),
+        Some("trace.json".into()),
     );
 
     let run_stats = sim.run();

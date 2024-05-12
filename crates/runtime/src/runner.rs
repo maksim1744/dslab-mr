@@ -18,6 +18,8 @@ use crate::{
     compute_host::ComputeHost,
     placement_strategy::{DynamicPlacementStrategy, StageActions},
     run_stats::RunStats,
+    system::HostConfig,
+    trace::{Trace, TraceEvent},
 };
 
 use super::{dag::Dag, data_item::DataItem};
@@ -73,9 +75,9 @@ pub struct Runner {
     computations: HashMap<u64, TaskCompleted>,
     running_stages: HashMap<(usize, usize), RunningStage>,
     waiting_for_replication: HashMap<u64, (usize, usize)>,
-    rack_by_host: HashMap<Id, usize>,
     dag_start: HashMap<usize, f64>,
     run_stats: RunStats,
+    trace: Trace,
     ctx: SimulationContext,
 }
 
@@ -87,25 +89,18 @@ impl Runner {
         network: Rc<RefCell<Network>>,
         ctx: SimulationContext,
     ) -> Self {
-        let rack_by_node = network
-            .borrow()
-            .get_nodes()
-            .iter()
-            .filter(|node_name| node_name.starts_with("host_"))
-            .map(|node_name| {
-                (
-                    network.borrow().get_node_id(node_name),
-                    node_name.split('_').nth(1).unwrap().parse::<usize>().unwrap(),
-                )
-            })
-            .collect::<HashMap<_, _>>();
-        let rack_by_host = compute_hosts
-            .keys()
-            .copied()
-            .map(|id| (id, rack_by_node[&network.borrow().get_location(id)]))
-            .collect();
         let total_cores = compute_hosts.values().map(|host| host.available_cores).sum();
         let total_memory = compute_hosts.values().map(|host| host.available_memory).sum();
+        let hosts = compute_hosts
+            .iter()
+            .map(|(&id, host)| HostConfig {
+                name: host.name.clone(),
+                speed: host.speed,
+                available_space: dfs.borrow().hosts_info()[&id].free_space,
+                available_cores: host.available_cores,
+                available_memory: host.available_memory,
+            })
+            .collect();
         Runner {
             placement_strategy,
             dags: Vec::new(),
@@ -121,9 +116,9 @@ impl Runner {
             computations: HashMap::new(),
             running_stages: HashMap::new(),
             waiting_for_replication: HashMap::new(),
-            rack_by_host,
             dag_start: HashMap::new(),
             run_stats: RunStats::new(total_cores, total_memory),
+            trace: Trace::new(hosts),
             ctx,
         }
     }
@@ -145,6 +140,10 @@ impl Runner {
 
     pub fn run_stats(&self) -> &RunStats {
         &self.run_stats
+    }
+
+    pub fn trace(&self) -> &Trace {
+        &self.trace
     }
 
     fn process_scheduler_stage_actions(&mut self, dag_id: usize, actions: StageActions) -> BTreeSet<Id> {
@@ -260,7 +259,16 @@ impl Runner {
     }
 
     fn host_with_rack(&self, host: Id) -> (Id, usize) {
-        (host, self.rack_by_host[&host])
+        (
+            host,
+            self.compute_hosts[&host]
+                .name
+                .split('_')
+                .nth(1)
+                .unwrap()
+                .parse()
+                .unwrap(),
+        )
     }
 
     fn process_tasks_queue(&mut self, host: Id) {
@@ -436,6 +444,15 @@ impl Runner {
         let dag_task = dag.stage(task.stage_id).task(task.task_id);
         let flops = dag_task.flops(task.input_size());
         self.run_stats.register_task_execution(flops);
+        self.trace.log(TraceEvent::TaskStarted {
+            time: self.ctx.time(),
+            dag_id: task.dag_id,
+            stage_id: task.stage_id,
+            task_id: task.task_id,
+            cores: dag_task.cores(),
+            memory: dag_task.memory(),
+            host: self.compute_hosts[&host].name.clone(),
+        });
 
         let computation_id = self.compute_hosts[&host].compute.borrow_mut().run(
             flops,
@@ -544,6 +561,12 @@ impl EventHandler for Runner {
                     .register_cpu_utilization((self.ctx.time() - task.start_time) * dag_task.cores() as f64);
                 self.run_stats
                     .register_memory_utilization((self.ctx.time() - task.start_time) * dag_task.memory() as f64);
+                self.trace.log(TraceEvent::TaskCompleted {
+                    time: self.ctx.time(),
+                    dag_id: task.dag_id,
+                    stage_id: task.stage_id,
+                    task_id: task.task_id,
+                });
                 drop(dag);
 
                 let actions = self.placement_strategy.on_task_completed(
