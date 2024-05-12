@@ -27,13 +27,13 @@ use crate::{
     system::{NetworkConfig, SystemConfig},
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GlobalInputPlan {
     pub host: String,
     pub size: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum InputPlan {
     RegisterOnStart { host: String },
@@ -42,12 +42,14 @@ pub enum InputPlan {
     GlobalInput { id: usize },
 }
 
+#[derive(Clone)]
 pub struct DagPlan {
     pub start_time: f64,
     pub dag: Rc<RefCell<Dag>>,
     pub input: HashMap<usize, InputPlan>,
 }
 
+#[derive(Clone)]
 pub struct SimulationPlan {
     pub dags: Vec<DagPlan>,
     pub global_inputs: Vec<GlobalInputPlan>,

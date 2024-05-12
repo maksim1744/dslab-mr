@@ -1,0 +1,12 @@
+[package]
+name = "run_experiment"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dslab-dfs = { version = "0.1.0", path = "../../crates/distributed_file_system" }
+dslab-mr = { version = "0.1.0", path = "../../crates/runtime" }
+clap = { version = "4.5.4", features = ["derive"] }
+serde = { version = "1.0.199", features = ["derive"] }
+serde_yaml = "0.9.34"
+serde_json = "1.0.117"

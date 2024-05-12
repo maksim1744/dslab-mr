@@ -2,6 +2,7 @@ pub mod cluster_simulation;
 pub mod compute_host;
 pub mod dag;
 pub mod data_item;
+pub mod experiment;
 pub mod parser;
 pub mod placement_strategy;
 pub mod run_stats;
