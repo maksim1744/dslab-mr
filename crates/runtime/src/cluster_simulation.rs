@@ -319,7 +319,7 @@ impl ClusterSimulation {
                 let compute = Rc::new(RefCell::new(Compute::new(
                     host.speed,
                     host.available_cores,
-                    0,
+                    host.available_memory,
                     self.sim.create_context(&host.name),
                 )));
                 self.sim.add_handler(&host.name, compute.clone());
@@ -330,6 +330,8 @@ impl ClusterSimulation {
                         speed: host.speed,
                         cores: host.available_cores,
                         available_cores: host.available_cores,
+                        memory: host.available_memory,
+                        available_memory: host.available_memory,
                         compute,
                     },
                 )

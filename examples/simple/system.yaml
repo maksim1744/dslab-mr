@@ -5,26 +5,32 @@ network:
 chunk_size: 16
 hosts:
 - name: host_0_0
+  speed: 1
   available_space: 1024
   available_cores: 4
-  speed: 1
+  available_memory: 1024
 - name: host_0_1
+  speed: 1
   available_space: 1024
   available_cores: 4
-  speed: 1
+  available_memory: 1024
 - name: host_1_0
+  speed: 1
   available_space: 1024
   available_cores: 4
-  speed: 1
+  available_memory: 1024
 - name: host_1_1
+  speed: 1
   available_space: 1024
   available_cores: 4
-  speed: 1
+  available_memory: 1024
 - name: host_2_0
+  speed: 1
   available_space: 1024
   available_cores: 4
-  speed: 1
+  available_memory: 1024
 - name: host_2_1
+  speed: 1
   available_space: 1024
   available_cores: 4
-  speed: 1
+  available_memory: 1024

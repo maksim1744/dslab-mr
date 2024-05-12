@@ -17,9 +17,10 @@ pub enum NetworkConfig {
 #[derive(Serialize, Deserialize)]
 pub struct HostConfig {
     pub name: String,
-    pub available_space: u64,
     pub speed: f64,
+    pub available_space: u64,
     pub available_cores: u32,
+    pub available_memory: u64,
 }
 
 #[derive(Serialize, Deserialize)]

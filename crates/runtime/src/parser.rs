@@ -15,6 +15,8 @@ use super::dag::{Dag, Shuffle, SimpleTask, Task, UniformShuffle};
 
 #[derive(Serialize, Deserialize)]
 pub struct YamlTask {
+    pub cores: u32,
+    pub memory: u64,
     pub flops_per_byte: f64,
     pub output_size_ratio: f64,
 }
@@ -74,6 +76,8 @@ impl Dag {
             for (task_id, task) in stage.tasks.into_iter().enumerate() {
                 tasks.push(Box::new(SimpleTask::new(
                     task_id as u64,
+                    task.cores,
+                    task.memory,
                     task.flops_per_byte,
                     task.output_size_ratio,
                 )) as Box<dyn Task>);

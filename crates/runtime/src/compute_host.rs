@@ -9,5 +9,7 @@ pub struct ComputeHost {
     pub speed: f64,
     pub cores: u32,
     pub available_cores: u32,
+    pub memory: u64,
+    pub available_memory: u64,
     pub compute: Rc<RefCell<Compute>>,
 }

@@ -260,16 +260,24 @@ impl Runner {
     }
 
     fn process_tasks_queue(&mut self, host: Id) {
-        while self.compute_hosts.get(&host).unwrap().available_cores > 0
-            && self
-                .task_queues
-                .get(&host)
-                .map(|queue| !queue.is_empty())
-                .unwrap_or(false)
+        while self
+            .task_queues
+            .get(&host)
+            .map(|queue| !queue.is_empty())
+            .unwrap_or(false)
         {
-            self.compute_hosts.get_mut(&host).unwrap().available_cores -= 1;
+            let task_id = self.task_queues.get_mut(&host).unwrap().front().unwrap();
+            let running_task = &self.running_tasks[task_id];
+            let dag = &self.dags[running_task.dag_id].borrow();
+            let dag_task = dag.stage(running_task.stage_id).task(running_task.task_id);
+            if self.compute_hosts.get(&host).unwrap().available_cores < dag_task.cores()
+                || self.compute_hosts.get(&host).unwrap().available_memory < dag_task.memory()
+            {
+                break;
+            }
+            self.compute_hosts.get_mut(&host).unwrap().available_cores -= dag_task.cores();
+            self.compute_hosts.get_mut(&host).unwrap().available_memory -= dag_task.memory();
             let task_id = self.task_queues.get_mut(&host).unwrap().pop_front().unwrap();
-            let running_task = &self.running_tasks[&task_id];
             let mut transfers = HashSet::new();
             log_debug!(
                 self.ctx,
@@ -419,18 +427,19 @@ impl Runner {
             task.task_id,
             task.input_size()
         );
-        let flops = self.dags[task.dag_id]
-            .borrow()
-            .stage(task.stage_id)
-            .task(task.task_id)
-            .flops(task.input_size());
+        let dag = self.dags[task.dag_id].borrow();
+        let dag_task = dag.stage(task.stage_id).task(task.task_id);
+        let flops = dag_task.flops(task.input_size());
         self.run_stats.register_task_execution(flops);
 
-        let computation_id =
-            self.compute_hosts[&host]
-                .compute
-                .borrow_mut()
-                .run(flops, 0, 1, 1, CoresDependency::Linear, self.ctx.id());
+        let computation_id = self.compute_hosts[&host].compute.borrow_mut().run(
+            flops,
+            dag_task.memory(),
+            dag_task.cores(),
+            dag_task.cores(),
+            CoresDependency::Linear {},
+            self.ctx.id(),
+        );
         self.computations.insert(
             computation_id,
             TaskCompleted {
@@ -523,8 +532,10 @@ impl EventHandler for Runner {
                         host,
                     });
                 }
+                let dag_task = dag.stage(task.stage_id).task(task.task_id);
+                self.compute_hosts.get_mut(&host).unwrap().available_cores += dag_task.cores();
+                self.compute_hosts.get_mut(&host).unwrap().available_memory += dag_task.memory();
                 drop(dag);
-                self.compute_hosts.get_mut(&host).unwrap().available_cores += 1;
 
                 let actions = self.placement_strategy.on_task_completed(
                     task.stage_id,

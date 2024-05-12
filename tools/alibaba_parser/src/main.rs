@@ -48,6 +48,14 @@ struct Args {
     #[arg(long, default_value_t = false)]
     upload_job_inputs_in_advance: bool,
 
+    /// Number of cores corresponding to 100% CPU usage.
+    #[arg(long, default_value_t = 1.0)]
+    cpu_multiplier: f64,
+
+    /// Needed memory for a task using 100% memory.
+    #[arg(long, default_value_t = 1.0)]
+    mem_multiplier: f64,
+
     /// Bounds of uniform distribute for flops_per_byte.
     #[arg(long, default_value_t = 0.001)]
     flops_per_byte_from: f64,
@@ -103,6 +111,8 @@ struct BatchTask {
     job_id: i64,
     start_time: i64,
     end_time: i64,
+    plan_cpu: f64,
+    plan_mem: f64,
 }
 
 impl TryFrom<BatchTaskRaw> for BatchTask {
@@ -135,6 +145,8 @@ impl TryFrom<BatchTaskRaw> for BatchTask {
                 .map_err(|_| "Can't parse job_id")?,
             start_time: raw_task.start_time,
             end_time: raw_task.end_time,
+            plan_cpu: raw_task.plan_cpu.parse().unwrap_or(0.0) / 100.0,
+            plan_mem: raw_task.plan_mem.parse().unwrap_or(0.0) / 100.0,
         })
     }
 }
@@ -251,6 +263,8 @@ fn main() {
             dag.stages.push(YamlStage {
                 tasks: (0..task.instances)
                     .map(|_| YamlTask {
+                        cores: ((task.plan_cpu * args.cpu_multiplier).round() as u32).max(1),
+                        memory: (task.plan_mem * args.mem_multiplier).round() as u64,
                         flops_per_byte: rng.gen_range(args.flops_per_byte_from..args.flops_per_byte_to)
                             * (task.end_time - task.start_time).max(1) as f64,
                         output_size_ratio: rng.gen_range(args.output_size_ratio_from..args.output_size_ratio_to),
