@@ -424,6 +424,8 @@ dependencies = [
  "dslab-network",
  "itertools",
  "log",
+ "rand",
+ "rand_pcg",
  "serde",
  "serde_json",
  "serde_yaml",

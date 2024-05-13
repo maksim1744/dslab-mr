@@ -106,7 +106,9 @@ where
                     graph.stage(stage_id),
                     graph,
                     input_data.get(&stage_id).unwrap_or(&Vec::new()),
-                    input_data_shuffled.get(&stage_id).unwrap_or(&Vec::new()),
+                    input_data_shuffled
+                        .get(&stage_id)
+                        .unwrap_or(&vec![vec![]; graph.stage(stage_id).tasks().len()]),
                     dfs,
                     compute_host_info,
                     network,
