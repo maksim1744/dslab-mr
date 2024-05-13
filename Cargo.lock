@@ -397,6 +397,8 @@ dependencies = [
  "dslab-core",
  "dslab-network",
  "log",
+ "rand",
+ "rand_pcg",
  "serde",
 ]
 

@@ -34,6 +34,7 @@ impl ReplicationStrategy for SimpleReplicationStrategy {
         chunks: &[ChunkId],
         _need_to_replicate: bool,
         host_info: &BTreeMap<Id, HostInfo>,
+        _network: &Network,
     ) -> BTreeMap<ChunkId, Vec<Id>> {
         let mut result = BTreeMap::new();
         for &chunk_id in chunks.iter() {

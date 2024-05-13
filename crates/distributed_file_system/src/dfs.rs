@@ -131,6 +131,7 @@ impl EventHandler for DistributedFileSystem {
                     &chunks,
                     need_to_replicate,
                     &self.host_info,
+                    &self.network.borrow(),
                 );
                 log_debug!(
                     self.ctx,

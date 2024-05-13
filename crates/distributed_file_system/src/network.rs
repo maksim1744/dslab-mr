@@ -1,9 +1,10 @@
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use dslab_core::{Id, Simulation};
 use dslab_network::models::{SharedBandwidthNetworkModel, TopologyAwareNetworkModel};
-use dslab_network::{Link, Network};
+use dslab_network::{Link, Network, NodeId};
 
 pub fn make_tree_topology(sim: &mut Simulation, star_count: usize, hosts_per_star: usize) -> Rc<RefCell<Network>> {
     let mut network = Network::new(Box::new(TopologyAwareNetworkModel::new()), sim.create_context("net"));
@@ -78,4 +79,18 @@ pub fn get_rack(network: &Network, id: Id) -> Option<u64> {
         .into_iter()
         .find(|s| network.get_node_id(s) == id)
         .and_then(|s| s.split('_').nth(1).and_then(|s| s.parse().ok()))
+}
+
+pub fn get_all_racks(network: &Network) -> BTreeMap<NodeId, u64> {
+    network
+        .get_nodes()
+        .into_iter()
+        .filter(|s| s.starts_with("host_"))
+        .map(|s| {
+            (
+                network.get_node_id(&s),
+                s.split('_').nth(1).and_then(|s| s.parse().ok()).unwrap(),
+            )
+        })
+        .collect()
 }
