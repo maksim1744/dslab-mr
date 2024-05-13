@@ -77,7 +77,10 @@ impl PlacementStrategy for LocalityAwareStrategy {
                 DataItem::Replicated { data_id, .. } => {
                     for &chunk_id in dfs.data_chunks(*data_id).unwrap().iter() {
                         all_inputs.push((
-                            *data_item,
+                            DataItem::Chunk {
+                                size: dfs.chunk_size(),
+                                chunk_id,
+                            },
                             dfs.chunk_location(chunk_id)
                                 .map(|locations| locations.iter().copied().collect::<Vec<Id>>())
                                 .unwrap_or_default(),
@@ -100,14 +103,12 @@ impl PlacementStrategy for LocalityAwareStrategy {
             .collect();
 
         for task_id in 0..stage.tasks().len() {
-            if unassigned.is_empty() {
-                break;
+            if unassigned.is_empty() && input_data_shuffled[task_id].is_empty() {
+                continue;
             }
             let mut assign_here =
                 (unassigned.len() + stage.tasks().len() - task_id - 1) / (stage.tasks().len() - task_id);
-            let host = if input_data_shuffled[task_id].is_empty() {
-                *self.pick_random(&all_inputs[*unassigned.iter().next().unwrap()].1)
-            } else {
+            let host = if !input_data_shuffled[task_id].is_empty() {
                 match self.pick_random(&input_data_shuffled[task_id]) {
                     DataItem::Chunk { chunk_id, .. } => {
                         **self.pick_random(&dfs.chunk_location(*chunk_id).unwrap().iter().collect::<Vec<_>>())
@@ -121,6 +122,8 @@ impl PlacementStrategy for LocalityAwareStrategy {
                             .collect::<Vec<_>>(),
                     ),
                 }
+            } else {
+                *self.pick_random(&all_inputs[*unassigned.iter().next().unwrap()].1)
             };
             result[task_id].host = host;
 
@@ -174,6 +177,7 @@ impl PlacementStrategy for LocalityAwareStrategy {
 
             result[task_id].input = inputs.into_iter().map(|input_id| all_inputs[input_id].0).collect();
         }
+        assert!(unassigned.is_empty());
 
         result
     }

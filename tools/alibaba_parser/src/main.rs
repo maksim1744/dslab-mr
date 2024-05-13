@@ -1,5 +1,6 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    env,
     fs::File,
     io::Write,
     path::PathBuf,
@@ -35,6 +36,10 @@ struct Args {
     /// Consider only jobs which end not later than this.
     #[arg(short, long, default_value_t = i64::MAX)]
     end_time: i64,
+
+    /// Maximum number of jobs.
+    #[arg(long, default_value_t = usize::MAX)]
+    limit: usize,
 
     /// Skip jobs having less tasks than this.
     #[arg(long, default_value_t = 1)]
@@ -104,6 +109,7 @@ struct BatchTaskRaw {
     plan_mem: String,
 }
 
+#[derive(Clone)]
 struct BatchTask {
     task_id: i64,
     dependencies: Vec<i64>,
@@ -233,7 +239,40 @@ fn main() {
         dags: Vec::new(),
         global_inputs: Vec::new(),
     };
-    for (job_id, tasks) in jobs.into_iter() {
+    for (job_id, mut tasks) in jobs.into_iter().take(args.limit) {
+        let mut tasks_order = Vec::new();
+        {
+            let task_index = tasks
+                .iter()
+                .enumerate()
+                .map(|(i, task)| (task.task_id, i))
+                .collect::<HashMap<_, _>>();
+            let mut q = VecDeque::new();
+            let mut inputs = vec![0usize; tasks.len()];
+            let mut outgoing_deps = vec![vec![]; tasks.len()];
+            for (task_id, task) in tasks.iter().enumerate() {
+                for dep in task.dependencies.iter() {
+                    outgoing_deps[task_index[dep]].push(task_id);
+                    inputs[task_id] += 1;
+                }
+            }
+            for (task_id, &input) in inputs.iter().enumerate() {
+                if input == 0 {
+                    q.push_back(task_id);
+                }
+            }
+            while let Some(task) = q.pop_front() {
+                tasks_order.push(task);
+                for &out in outgoing_deps[task].iter() {
+                    inputs[out] -= 1;
+                    if inputs[out] == 0 {
+                        q.push_back(out);
+                    }
+                }
+            }
+            assert_eq!(tasks_order.len(), tasks.len());
+            tasks = tasks_order.into_iter().map(|task_id| tasks[task_id].clone()).collect();
+        }
         let mut dag = YamlDag {
             initial_data: tasks
                 .iter()
@@ -263,7 +302,7 @@ fn main() {
             dag.stages.push(YamlStage {
                 tasks: (0..task.instances)
                     .map(|_| YamlTask {
-                        cores: ((task.plan_cpu * args.cpu_multiplier).round() as u32).max(1),
+                        cores: ((task.plan_cpu.min(1.0) * args.cpu_multiplier).round() as u32).max(1),
                         memory: (task.plan_mem * args.mem_multiplier).round() as u64,
                         flops_per_byte: rng.gen_range(args.flops_per_byte_from..args.flops_per_byte_to)
                             * (task.end_time - task.start_time).max(1) as f64,
@@ -315,8 +354,13 @@ fn main() {
             .write_all(serde_yaml::to_string(&dag).unwrap().as_bytes())
             .unwrap_or_else(|_| panic!("Can't write dag {}", job_id));
     }
+    plan.dags.sort_by(|a, b| a.start_time.total_cmp(&b.start_time));
     File::create(args.output_path.join("plan.yaml"))
         .expect("Can't create file for plan.yaml")
         .write_all(serde_yaml::to_string(&plan).unwrap().as_bytes())
         .expect("Can't write plan to file");
+    File::create(args.output_path.join("cmd.txt"))
+        .expect("Can't create file for cmd.txt")
+        .write_all(env::args().skip(1).collect::<Vec<_>>().join(" ").as_bytes())
+        .expect("Can't write cmd to file");
 }

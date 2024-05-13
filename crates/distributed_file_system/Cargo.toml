@@ -5,8 +5,8 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [dependencies]
-dslab-core = { git = "https://github.com/osukhoroslov/dslab", version = "0.1.0" }
-dslab-network = { git = "https://github.com/osukhoroslov/dslab", version = "0.1.0" }
+dslab-core = { git = "https://github.com/osukhoroslov/dslab", rev = "59637e355dd2b2927a0da29a430b980fc5c3d3b0", version = "0.1.0" }
+dslab-network = { git = "https://github.com/osukhoroslov/dslab", rev = "59637e355dd2b2927a0da29a430b980fc5c3d3b0", version = "0.1.0" }
 log = "0.4.21"
 rand = "0.8.5"
 rand_pcg = "0.3.1"

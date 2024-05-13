@@ -6,11 +6,15 @@ pub enum NetworkConfig {
     Tree {
         star_count: usize,
         hosts_per_star: usize,
+        downlink_bw: f64,
+        internal_bw: f64,
     },
     FatTree {
         l2_switch_count: usize,
         l1_switch_count: usize,
         hosts_per_switch: usize,
+        downlink_bw: f64,
+        internal_bw: f64,
     },
 }
 

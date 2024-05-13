@@ -1,0 +1,12 @@
+plans:
+- plan_path: ../../alibaba/parsed_1/plan.yaml
+  dags_path: ../../alibaba/parsed_1/dags
+systems:
+- systems/tree.yaml
+- systems/fat_tree.yaml
+replication_strategies:
+- Random[replication_factor=3,chunk_distribution=AllowEverything]
+- Random[replication_factor=3,chunk_distribution=ProhibitSameRack]
+placement_strategies:
+- Random
+- LocalityAware

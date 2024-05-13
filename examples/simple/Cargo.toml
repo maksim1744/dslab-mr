@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 dslab-dfs = { version = "0.1.0", path = "../../crates/distributed_file_system" }
 dslab-mr = { version = "0.1.0", path = "../../crates/runtime" }
-dslab-core = { git = "https://github.com/osukhoroslov/dslab", version = "0.1.0" }
-dslab-network = { git = "https://github.com/osukhoroslov/dslab", version = "0.1.0" }
+dslab-core = { git = "https://github.com/osukhoroslov/dslab", rev = "59637e355dd2b2927a0da29a430b980fc5c3d3b0", version = "0.1.0" }
+dslab-network = { git = "https://github.com/osukhoroslov/dslab", rev = "59637e355dd2b2927a0da29a430b980fc5c3d3b0", version = "0.1.0" }
 env_logger = "0.11.3"
 log = "0.4.21"
 serde_yaml = "0.9.34"

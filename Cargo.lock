@@ -364,7 +364,7 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 [[package]]
 name = "dslab-compute"
 version = "0.1.0"
-source = "git+https://github.com/osukhoroslov/dslab#f504da8c770dd8d644874b67764f5d17021aadc1"
+source = "git+https://github.com/osukhoroslov/dslab?rev=59637e355dd2b2927a0da29a430b980fc5c3d3b0#59637e355dd2b2927a0da29a430b980fc5c3d3b0"
 dependencies = [
  "dslab-core",
  "dslab-models",
@@ -374,7 +374,7 @@ dependencies = [
 [[package]]
 name = "dslab-core"
 version = "0.1.0"
-source = "git+https://github.com/osukhoroslov/dslab#f504da8c770dd8d644874b67764f5d17021aadc1"
+source = "git+https://github.com/osukhoroslov/dslab?rev=59637e355dd2b2927a0da29a430b980fc5c3d3b0#59637e355dd2b2927a0da29a430b980fc5c3d3b0"
 dependencies = [
  "atty",
  "colored",
@@ -405,7 +405,7 @@ dependencies = [
 [[package]]
 name = "dslab-models"
 version = "0.1.0"
-source = "git+https://github.com/osukhoroslov/dslab#f504da8c770dd8d644874b67764f5d17021aadc1"
+source = "git+https://github.com/osukhoroslov/dslab?rev=59637e355dd2b2927a0da29a430b980fc5c3d3b0#59637e355dd2b2927a0da29a430b980fc5c3d3b0"
 dependencies = [
  "approx",
  "dslab-core",
@@ -435,7 +435,7 @@ dependencies = [
 [[package]]
 name = "dslab-network"
 version = "0.1.0"
-source = "git+https://github.com/osukhoroslov/dslab#f504da8c770dd8d644874b67764f5d17021aadc1"
+source = "git+https://github.com/osukhoroslov/dslab?rev=59637e355dd2b2927a0da29a430b980fc5c3d3b0#59637e355dd2b2927a0da29a430b980fc5c3d3b0"
 dependencies = [
  "dslab-core",
  "dslab-models",
@@ -1097,6 +1097,7 @@ dependencies = [
  "clap",
  "dslab-dfs",
  "dslab-mr",
+ "env_logger",
  "serde",
  "serde_json",
  "serde_yaml",

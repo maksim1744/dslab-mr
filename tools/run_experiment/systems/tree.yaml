@@ -1,0 +1,13 @@
+network:
+  type: Tree
+  star_count: 4
+  hosts_per_star: 8
+  downlink_bw: 40000
+  internal_bw: 4000000
+chunk_size: 64
+hosts:
+- name: default
+  speed: 1
+  available_space: 10240000
+  available_cores: 16
+  available_memory: 128000000

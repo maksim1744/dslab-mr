@@ -160,7 +160,29 @@ impl Runner {
             if !self.compute_hosts.contains_key(&placement.host) {
                 log_error!(
                     self.ctx,
-                    "can't place task {} on host {} since it doesn't exist",
+                    "can't place task {}.{}.{} on host {} since it doesn't exist",
+                    dag_id,
+                    stage_id,
+                    task_id,
+                    placement.host
+                );
+            }
+            if dag.stage(stage_id).task(task_id).cores() > self.compute_hosts[&placement.host].cores {
+                log_error!(
+                    self.ctx,
+                    "can't place task {}.{}.{} on host {} since there is not enough cores",
+                    dag_id,
+                    stage_id,
+                    task_id,
+                    placement.host
+                );
+            }
+            if dag.stage(stage_id).task(task_id).memory() > self.compute_hosts[&placement.host].memory {
+                log_error!(
+                    self.ctx,
+                    "can't place task {}.{}.{} on host {} since there is not enough memory",
+                    dag_id,
+                    stage_id,
                     task_id,
                     placement.host
                 );
@@ -272,6 +294,7 @@ impl Runner {
     }
 
     fn process_tasks_queue(&mut self, host: Id) {
+        let mut empty_tasks = Vec::new();
         while self
             .task_queues
             .get(&host)
@@ -356,6 +379,13 @@ impl Runner {
                 self.task_waiting_for_transfer.insert(transfer_id, task_id);
             }
             self.running_tasks.get_mut(&task_id).unwrap().waiting_for_transfers = transfers;
+
+            if self.running_tasks[&task_id].waiting_for_transfers.is_empty() {
+                empty_tasks.push(task_id);
+            }
+        }
+        for task_id in empty_tasks.into_iter() {
+            self.start_task(task_id, host);
         }
     }
 
@@ -364,7 +394,7 @@ impl Runner {
         self.dags[dag_id].borrow_mut().mark_completed(stage_id);
         let dag = self.dags[dag_id].borrow();
         if dag.completed_stages().len() == dag.stages().len() {
-            log_debug!(self.ctx, "dag {} finished", dag_id);
+            log_info!(self.ctx, "dag {} finished", dag_id);
             self.run_stats.register_dag(self.ctx.time() - self.dag_start[&dag_id]);
         }
         let running_stage = self.running_stages.remove(&(dag_id, stage_id)).unwrap();
@@ -534,25 +564,27 @@ impl EventHandler for Runner {
                     .stage(task.stage_id)
                     .task(task.task_id)
                     .output_size(task.input_size());
-                if dag.stage(task.stage_id).upload_result_to_dfs() {
-                    let data_id = self.dfs.borrow_mut().next_data_id();
-                    self.ctx.emit_now(
-                        RegisterData {
+                if output_size != 0 {
+                    if dag.stage(task.stage_id).upload_result_to_dfs() {
+                        let data_id = self.dfs.borrow_mut().next_data_id();
+                        self.ctx.emit_now(
+                            RegisterData {
+                                size: output_size,
+                                host,
+                                data_id,
+                                need_to_replicate: true,
+                            },
+                            self.dfs.borrow().id(),
+                        );
+                        running_stage.waiting_for_replication.insert(data_id);
+                        self.waiting_for_replication
+                            .insert(data_id, (task.dag_id, task.stage_id));
+                    } else {
+                        running_stage.outputs.push(DataItem::Local {
                             size: output_size,
                             host,
-                            data_id,
-                            need_to_replicate: true,
-                        },
-                        self.dfs.borrow().id(),
-                    );
-                    running_stage.waiting_for_replication.insert(data_id);
-                    self.waiting_for_replication
-                        .insert(data_id, (task.dag_id, task.stage_id));
-                } else {
-                    running_stage.outputs.push(DataItem::Local {
-                        size: output_size,
-                        host,
-                    });
+                        });
+                    }
                 }
                 let dag_task = dag.stage(task.stage_id).task(task.task_id);
                 self.compute_hosts.get_mut(&host).unwrap().available_cores += dag_task.cores();
@@ -580,6 +612,7 @@ impl EventHandler for Runner {
                     &self.network.borrow(),
                 );
                 self.process_scheduler_actions(task.dag_id, actions);
+                self.process_tasks_queue(host);
 
                 let task = &self.running_tasks[&task_id];
                 let running_stage = self.running_stages.get(&(task.dag_id, task.stage_id)).unwrap();

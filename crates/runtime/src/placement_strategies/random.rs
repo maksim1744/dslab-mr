@@ -57,8 +57,11 @@ impl PlacementStrategy for RandomPlacementStrategy {
                     }
                 }
                 DataItem::Replicated { data_id, .. } => {
-                    for _chunk_id in dfs.data_chunks(*data_id).unwrap().iter() {
-                        all_inputs.push(*data_item);
+                    for &chunk_id in dfs.data_chunks(*data_id).unwrap().iter() {
+                        all_inputs.push(DataItem::Chunk {
+                            size: dfs.chunk_size(),
+                            chunk_id,
+                        });
                     }
                 }
             }

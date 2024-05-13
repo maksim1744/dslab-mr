@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::File,
     io::Write,
     path::PathBuf,
@@ -69,7 +69,7 @@ impl EventHandler for DataOnHost {
 struct DagManager {
     plan: SimulationPlan,
     dfs: Rc<RefCell<DistributedFileSystem>>,
-    actor_by_host_name: HashMap<String, Id>,
+    actor_by_host_name: BTreeMap<String, Id>,
     all_hosts: Vec<Id>,
     runner_id: Id,
     left_registrations: usize,
@@ -84,7 +84,7 @@ impl DagManager {
     fn new(
         plan: SimulationPlan,
         dfs: Rc<RefCell<DistributedFileSystem>>,
-        actor_by_host_name: HashMap<String, Id>,
+        actor_by_host_name: BTreeMap<String, Id>,
         runner_id: Id,
         ctx: SimulationContext,
     ) -> Self {
@@ -272,15 +272,26 @@ impl ClusterSimulation {
             NetworkConfig::Tree {
                 star_count,
                 hosts_per_star,
-            } => make_tree_topology(&mut self.sim, star_count, hosts_per_star),
+                downlink_bw,
+                internal_bw,
+            } => make_tree_topology(&mut self.sim, star_count, hosts_per_star, downlink_bw, internal_bw),
             NetworkConfig::FatTree {
                 l2_switch_count,
                 l1_switch_count,
                 hosts_per_switch,
-            } => make_fat_tree_topology(&mut self.sim, l2_switch_count, l1_switch_count, hosts_per_switch),
+                downlink_bw,
+                internal_bw,
+            } => make_fat_tree_topology(
+                &mut self.sim,
+                l2_switch_count,
+                l1_switch_count,
+                hosts_per_switch,
+                downlink_bw,
+                internal_bw,
+            ),
         };
         let nodes = network.borrow().get_nodes();
-        let mut actor_by_host_name: HashMap<String, Id> = HashMap::new();
+        let mut actor_by_host_name: BTreeMap<String, Id> = BTreeMap::new();
         for node_name in nodes {
             if !node_name.starts_with("host_") {
                 continue;
@@ -296,9 +307,25 @@ impl ClusterSimulation {
             network.borrow_mut().set_location(data_on_host_id, &node_name);
         }
 
+        let mut config_hosts = self.system_config.hosts;
+        if let Some(default_host) = config_hosts.iter().position(|host| host.name == "default") {
+            let default_host = config_hosts.remove(default_host);
+            let existing_hosts = config_hosts
+                .iter()
+                .map(|host| host.name.clone())
+                .collect::<HashSet<_>>();
+            for host in actor_by_host_name.keys() {
+                if existing_hosts.contains(host) {
+                    continue;
+                }
+                let mut host_config = default_host.clone();
+                host_config.name.clone_from(host);
+                config_hosts.push(host_config);
+            }
+        }
+
         let dfs = DistributedFileSystem::new(
-            self.system_config
-                .hosts
+            config_hosts
                 .iter()
                 .map(|host| {
                     (
@@ -319,9 +346,7 @@ impl ClusterSimulation {
         let dfs = Rc::new(RefCell::new(dfs));
         let _dfs_id = self.sim.add_handler("dfs", dfs.clone());
 
-        let compute_hosts = self
-            .system_config
-            .hosts
+        let compute_hosts = config_hosts
             .iter()
             .map(|host| {
                 let compute = Rc::new(RefCell::new(Compute::new(

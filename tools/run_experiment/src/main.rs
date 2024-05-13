@@ -1,16 +1,22 @@
 use std::{
+    collections::HashMap,
     fs::File,
     io::Write,
     path::{Path, PathBuf},
 };
 
 use clap::Parser;
-use dslab_dfs::replication_strategy::ReplicationStrategy;
+use dslab_dfs::{
+    replication_strategies::random::{ChunkDistribution, RandomReplicationStrategy},
+    replication_strategy::ReplicationStrategy,
+};
 use dslab_mr::{
     experiment::{Experiment, Plan},
+    placement_strategies::{locality_aware::LocalityAwareStrategy, random::RandomPlacementStrategy},
     placement_strategy::DynamicPlacementStrategy,
     system::SystemConfig,
 };
+use env_logger::Builder;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -42,7 +48,7 @@ struct Args {
     output: PathBuf,
 
     /// Number of threads.
-    #[arg(short, long, default_value_t = std::thread::available_parallelism().unwrap().get())]
+    #[arg(long, default_value_t = std::thread::available_parallelism().unwrap().get())]
     threads: usize,
 }
 
@@ -58,15 +64,49 @@ fn filename(path: impl AsRef<Path>) -> String {
         .to_string()
 }
 
-fn replication_strategy_resolver(_name: &str) -> Box<dyn ReplicationStrategy> {
-    unimplemented!()
+fn read_name(name: &str) -> (&str, HashMap<&str, &str>) {
+    let open = name.find('[');
+    if open.is_none() {
+        return (name, HashMap::new());
+    }
+    (
+        &name[..open.unwrap()],
+        name[open.unwrap() + 1..name.len() - 1]
+            .split(',')
+            .map(|s| s.split('=').collect::<Vec<_>>())
+            .map(|v| (v[0], v[1]))
+            .collect(),
+    )
 }
 
-fn placement_strategy_resolver(_name: &str) -> Box<dyn DynamicPlacementStrategy> {
-    unimplemented!()
+fn replication_strategy_resolver(name: &str) -> Box<dyn ReplicationStrategy> {
+    let (name, args) = read_name(name);
+    match name {
+        "Random" => Box::new(RandomReplicationStrategy::new(
+            args["replication_factor"].parse().unwrap(),
+            match args["chunk_distribution"] {
+                "AllowEverything" => ChunkDistribution::AllowEverything,
+                "ProhibitSameRack" => ChunkDistribution::ProhibitSameRack,
+                x => panic!("Unknownk chunk distribution {}", x),
+            },
+        )),
+        x => panic!("Unkwnon replication strategy {}", x),
+    }
+}
+
+fn placement_strategy_resolver(name: &str) -> Box<dyn DynamicPlacementStrategy> {
+    match name {
+        "Random" => Box::new(RandomPlacementStrategy::new()),
+        "LocalityAware" => Box::new(LocalityAwareStrategy::new()),
+        x => panic!("Unkwnon placement strategy {}", x),
+    }
 }
 
 fn main() {
+    Builder::from_default_env()
+        .format(|buf, record| writeln!(buf, "{}", record.args()))
+        .init();
+
     let args = Args::parse();
     let config: Config = serde_yaml::from_str(&std::fs::read_to_string(args.config).expect("Can't read config file"))
         .expect("Can't parse config file");
