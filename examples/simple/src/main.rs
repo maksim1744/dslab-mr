@@ -54,6 +54,7 @@ struct SimplePlacementStrategy {}
 impl PlacementStrategy for SimplePlacementStrategy {
     fn place_stage(
         &mut self,
+        _dag_id: usize,
         stage: &Stage,
         _graph: &Dag,
         input_data: &[DataItem],

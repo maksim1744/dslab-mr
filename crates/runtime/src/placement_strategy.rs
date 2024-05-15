@@ -19,9 +19,12 @@ pub struct TaskPlacement {
 }
 
 pub trait PlacementStrategy {
+    fn register_dag(&mut self, _dag_id: usize, _graph: &Dag) {}
+
     #[allow(clippy::too_many_arguments)]
     fn place_stage(
         &mut self,
+        dag_id: usize,
         stage: &Stage,
         graph: &Dag,
         input_data: &[DataItem],
@@ -41,15 +44,19 @@ pub struct DynamicTaskPlacement {
 
 #[derive(Debug)]
 pub struct StageActions {
+    pub dag_id: usize,
     pub stage_id: usize,
     pub task_placements: Vec<DynamicTaskPlacement>,
     pub remaining_input: Vec<DataItem>,
 }
 
 pub trait DynamicPlacementStrategy {
+    fn register_dag(&mut self, _dag_id: usize, _graph: &Dag) {}
+
     #[allow(clippy::too_many_arguments)]
     fn on_stage_ready(
         &mut self,
+        dag_id: usize,
         stage_id: usize,
         graph: &Dag,
         input_data: &BTreeMap<usize, Vec<DataItem>>,
@@ -62,6 +69,7 @@ pub trait DynamicPlacementStrategy {
     #[allow(clippy::too_many_arguments)]
     fn on_task_completed(
         &mut self,
+        dag_id: usize,
         stage_id: usize,
         task: usize,
         graph: &Dag,
@@ -75,6 +83,7 @@ pub trait DynamicPlacementStrategy {
     #[allow(clippy::too_many_arguments)]
     fn on_stage_completed(
         &mut self,
+        dag_id: usize,
         stage_id: usize,
         graph: &Dag,
         input_data: &BTreeMap<usize, Vec<DataItem>>,
@@ -89,8 +98,13 @@ impl<T> DynamicPlacementStrategy for T
 where
     T: PlacementStrategy,
 {
+    fn register_dag(&mut self, dag_id: usize, graph: &Dag) {
+        T::register_dag(self, dag_id, graph);
+    }
+
     fn on_stage_ready(
         &mut self,
+        dag_id: usize,
         stage_id: usize,
         graph: &Dag,
         input_data: &BTreeMap<usize, Vec<DataItem>>,
@@ -100,9 +114,11 @@ where
         network: &Network,
     ) -> Vec<StageActions> {
         vec![StageActions {
+            dag_id,
             stage_id,
             task_placements: self
                 .place_stage(
+                    dag_id,
                     graph.stage(stage_id),
                     graph,
                     input_data.get(&stage_id).unwrap_or(&Vec::new()),
@@ -127,6 +143,7 @@ where
 
     fn on_task_completed(
         &mut self,
+        _dag_id: usize,
         _stage_id: usize,
         _task: usize,
         _graph: &Dag,
@@ -141,6 +158,7 @@ where
 
     fn on_stage_completed(
         &mut self,
+        _dag_id: usize,
         _stage_id: usize,
         _graph: &Dag,
         _input_data: &BTreeMap<usize, Vec<DataItem>>,

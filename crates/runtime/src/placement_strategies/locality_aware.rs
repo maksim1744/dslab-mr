@@ -10,6 +10,7 @@ use crate::{
     compute_host::ComputeHost,
     dag::{Dag, Stage},
     data_item::DataItem,
+    placement_strategies::common::{collect_all_input, shuffle},
     placement_strategy::{PlacementStrategy, TaskPlacement},
 };
 
@@ -32,6 +33,7 @@ impl LocalityAwareStrategy {
 impl PlacementStrategy for LocalityAwareStrategy {
     fn place_stage(
         &mut self,
+        _dag_id: usize,
         stage: &Stage,
         _graph: &Dag,
         input_data: &[DataItem],
@@ -40,59 +42,15 @@ impl PlacementStrategy for LocalityAwareStrategy {
         compute_host_info: &BTreeMap<Id, ComputeHost>,
         network: &Network,
     ) -> Vec<TaskPlacement> {
-        let mut all_inputs: Vec<(DataItem, Vec<Id>)> = Vec::new();
         let node_racks = get_all_racks(network);
         let host_racks = compute_host_info
             .keys()
             .copied()
             .map(|host| (host, node_racks[&network.get_location(host)]))
             .collect::<BTreeMap<_, _>>();
-        for data_item in input_data.iter() {
-            match data_item {
-                DataItem::Chunk { chunk_id, .. } => {
-                    all_inputs.push((
-                        *data_item,
-                        dfs.chunk_location(*chunk_id)
-                            .map(|locations| locations.iter().copied().collect::<Vec<Id>>())
-                            .unwrap_or_default(),
-                    ));
-                }
-                DataItem::Local { mut size, host } => {
-                    while size > 0 {
-                        let size_here = if size >= dfs.chunk_size() * 2 {
-                            dfs.chunk_size()
-                        } else {
-                            size
-                        };
-                        all_inputs.push((
-                            DataItem::Local {
-                                size: size_here,
-                                host: *host,
-                            },
-                            vec![*host],
-                        ));
-                        size -= size_here;
-                    }
-                }
-                DataItem::Replicated { data_id, .. } => {
-                    for &chunk_id in dfs.data_chunks(*data_id).unwrap().iter() {
-                        all_inputs.push((
-                            DataItem::Chunk {
-                                size: dfs.chunk_size(),
-                                chunk_id,
-                            },
-                            dfs.chunk_location(chunk_id)
-                                .map(|locations| locations.iter().copied().collect::<Vec<Id>>())
-                                .unwrap_or_default(),
-                        ));
-                    }
-                }
-            }
-        }
+        let mut all_inputs = collect_all_input(input_data, dfs);
 
-        for i in 1..all_inputs.len() {
-            all_inputs.swap(i, self.rng.gen_range(0..i + 1));
-        }
+        shuffle(&mut self.rng, &mut all_inputs);
 
         let mut unassigned = (0..all_inputs.len()).collect::<BTreeSet<_>>();
         let mut result: Vec<TaskPlacement> = (0..stage.tasks().len())

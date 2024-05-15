@@ -12,7 +12,9 @@ use dslab_dfs::{
 };
 use dslab_mr::{
     experiment::{Experiment, Plan},
-    placement_strategies::{locality_aware::LocalityAwareStrategy, random::RandomPlacementStrategy},
+    placement_strategies::{
+        locality_aware::LocalityAwareStrategy, packing_scheduler::PackingScheduler, random::RandomPlacementStrategy,
+    },
     placement_strategy::DynamicPlacementStrategy,
     system::SystemConfig,
 };
@@ -95,9 +97,14 @@ fn replication_strategy_resolver(name: &str) -> Box<dyn ReplicationStrategy> {
 }
 
 fn placement_strategy_resolver(name: &str) -> Box<dyn DynamicPlacementStrategy> {
+    let (name, args) = read_name(name);
     match name {
         "Random" => Box::new(RandomPlacementStrategy::new()),
         "LocalityAware" => Box::new(LocalityAwareStrategy::new()),
+        "PackingScheduler" => Box::new(PackingScheduler::new(
+            args["other_rack_input_penalty"].parse().unwrap(),
+            args["other_host_input_penalty"].parse().unwrap(),
+        )),
         x => panic!("Unkwnon placement strategy {}", x),
     }
 }
@@ -169,9 +176,16 @@ fn main() {
 
     result.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.2.total_cmp(&b.2)));
 
-    println!("| algorithm                                | avg place | avg slowdown |");
-    println!("|------------------------------------------|-----------|--------------|");
+    let width = result.iter().map(|x| x.0.len()).max().unwrap();
+    println!("| {: <width$} | avg place | avg slowdown |", "algorithm", width = width);
+    println!("|-{:-<width$}-|-----------|--------------|", "", width = width);
     for (alg, place, slowdown) in result.into_iter() {
-        println!("| {: <40} | {: >9.3} | {: >12.3} |", alg, place, slowdown);
+        println!(
+            "| {: <width$} | {: >9.3} | {: >12.3} |",
+            alg,
+            place,
+            slowdown,
+            width = width
+        );
     }
 }

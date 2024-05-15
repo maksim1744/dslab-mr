@@ -146,8 +146,9 @@ impl Runner {
         &self.trace
     }
 
-    fn process_scheduler_stage_actions(&mut self, dag_id: usize, actions: StageActions) -> BTreeSet<Id> {
+    fn process_scheduler_stage_actions(&mut self, actions: StageActions) -> BTreeSet<Id> {
         log_debug!(self.ctx, "got actions from scheduler: {:?}", actions);
+        let dag_id = actions.dag_id;
         let dag = self.dags[dag_id].borrow();
         let mut affected_hosts = BTreeSet::new();
         let stage_id = actions.stage_id;
@@ -222,13 +223,17 @@ impl Runner {
             self.next_running_task_id += 1;
             affected_hosts.insert(placement.host);
         }
+        self.stage_input
+            .entry(dag_id)
+            .or_default()
+            .insert(actions.stage_id, actions.remaining_input);
         affected_hosts
     }
 
-    fn process_scheduler_actions(&mut self, dag_id: usize, actions: Vec<StageActions>) {
+    fn process_scheduler_actions(&mut self, actions: Vec<StageActions>) {
         let mut affected_hosts = BTreeSet::new();
         for stage_action in actions.into_iter() {
-            affected_hosts.extend(self.process_scheduler_stage_actions(dag_id, stage_action));
+            affected_hosts.extend(self.process_scheduler_stage_actions(stage_action));
         }
         for host in affected_hosts.into_iter() {
             self.process_tasks_queue(host);
@@ -263,6 +268,7 @@ impl Runner {
         );
 
         let actions = self.placement_strategy.on_stage_ready(
+            dag_id,
             stage_id,
             &dag,
             self.stage_input.get(&dag_id).unwrap_or(&BTreeMap::new()),
@@ -272,7 +278,7 @@ impl Runner {
             &self.network.borrow(),
         );
         drop(dag);
-        self.process_scheduler_actions(dag_id, actions);
+        self.process_scheduler_actions(actions);
     }
 
     fn new_dag(&mut self, dag: Rc<RefCell<Dag>>) {
@@ -426,6 +432,7 @@ impl Runner {
         }
 
         let actions = self.placement_strategy.on_stage_completed(
+            dag_id,
             stage_id,
             &dag,
             self.stage_input.get(&dag_id).unwrap_or(&BTreeMap::new()),
@@ -435,7 +442,7 @@ impl Runner {
             &self.network.borrow(),
         );
         drop(dag);
-        self.process_scheduler_actions(dag_id, actions);
+        self.process_scheduler_actions(actions);
 
         self.process_ready_stages(dag_id);
     }
@@ -602,6 +609,7 @@ impl EventHandler for Runner {
                 drop(dag);
 
                 let actions = self.placement_strategy.on_task_completed(
+                    task.dag_id,
                     task.stage_id,
                     task.task_id,
                     &self.dags[task.dag_id].borrow(),
@@ -611,7 +619,7 @@ impl EventHandler for Runner {
                     &self.compute_hosts,
                     &self.network.borrow(),
                 );
-                self.process_scheduler_actions(task.dag_id, actions);
+                self.process_scheduler_actions(actions);
                 self.process_tasks_queue(host);
 
                 let task = &self.running_tasks[&task_id];

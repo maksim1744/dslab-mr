@@ -13,6 +13,8 @@ use crate::{
     placement_strategy::{PlacementStrategy, TaskPlacement},
 };
 
+use super::common::{collect_all_input, shuffle};
+
 pub struct RandomPlacementStrategy {
     rng: Pcg64,
 }
@@ -28,6 +30,7 @@ impl RandomPlacementStrategy {
 impl PlacementStrategy for RandomPlacementStrategy {
     fn place_stage(
         &mut self,
+        _dag_id: usize,
         stage: &Stage,
         _graph: &Dag,
         input_data: &[DataItem],
@@ -36,40 +39,12 @@ impl PlacementStrategy for RandomPlacementStrategy {
         compute_host_info: &BTreeMap<Id, ComputeHost>,
         _network: &Network,
     ) -> Vec<TaskPlacement> {
-        let mut all_inputs: Vec<DataItem> = Vec::new();
-        for data_item in input_data.iter() {
-            match data_item {
-                DataItem::Chunk { .. } => {
-                    all_inputs.push(*data_item);
-                }
-                DataItem::Local { mut size, host } => {
-                    while size > 0 {
-                        let size_here = if size >= dfs.chunk_size() * 2 {
-                            dfs.chunk_size()
-                        } else {
-                            size
-                        };
-                        all_inputs.push(DataItem::Local {
-                            size: size_here,
-                            host: *host,
-                        });
-                        size -= size_here;
-                    }
-                }
-                DataItem::Replicated { data_id, .. } => {
-                    for &chunk_id in dfs.data_chunks(*data_id).unwrap().iter() {
-                        all_inputs.push(DataItem::Chunk {
-                            size: dfs.chunk_size(),
-                            chunk_id,
-                        });
-                    }
-                }
-            }
-        }
+        let mut all_inputs = collect_all_input(input_data, dfs)
+            .into_iter()
+            .map(|x| x.0)
+            .collect::<Vec<_>>();
 
-        for i in 1..all_inputs.len() {
-            all_inputs.swap(i, self.rng.gen_range(0..i + 1));
-        }
+        shuffle(&mut self.rng, &mut all_inputs);
 
         let hosts = compute_host_info.keys().copied().collect::<Vec<_>>();
 
