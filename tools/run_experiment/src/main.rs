@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::Write,
     path::{Path, PathBuf},
@@ -138,4 +138,40 @@ fn main() {
         .expect("Can't create output file")
         .write_all(serde_json::to_string_pretty(&result).unwrap().as_bytes())
         .expect("Can't write to output file");
+
+    let mut best_placement_algs: HashMap<(String, String, String), Vec<(f64, String)>> = HashMap::new();
+    for run in result.iter() {
+        best_placement_algs
+            .entry((run.plan.clone(), run.system.clone(), run.replication_strategy.clone()))
+            .or_default()
+            .push((run.run_stats.average_dag_makespan, run.placement_strategy.clone()));
+    }
+
+    let mut places: BTreeMap<String, Vec<(usize, f64)>> = BTreeMap::new();
+    for (_key, mut values) in best_placement_algs.into_iter() {
+        values.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let best_makespan = values[0].0;
+        for (i, (makespan, alg)) in values.into_iter().enumerate() {
+            places.entry(alg).or_default().push((i + 1, makespan / best_makespan));
+        }
+    }
+
+    let mut result = places
+        .into_iter()
+        .map(|(alg, places)| {
+            (
+                alg,
+                places.iter().map(|x| x.0).sum::<usize>() as f64 / places.len() as f64,
+                places.iter().map(|x| x.1).sum::<f64>() / places.len() as f64,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    result.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.2.total_cmp(&b.2)));
+
+    println!("| algorithm                                | avg place | avg slowdown |");
+    println!("|------------------------------------------|-----------|--------------|");
+    for (alg, place, slowdown) in result.into_iter() {
+        println!("| {: <40} | {: >9.3} | {: >12.3} |", alg, place, slowdown);
+    }
 }

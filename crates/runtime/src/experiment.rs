@@ -28,19 +28,19 @@ pub struct Plan {
 }
 
 struct Run {
-    plan: Plan,
-    system: (String, SystemConfig),
-    replication_strategy: String,
-    placement_strategy: String,
+    pub plan: Plan,
+    pub system: (String, SystemConfig),
+    pub replication_strategy: String,
+    pub placement_strategy: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunResult {
-    plan: String,
-    system: String,
-    replication_strategy: String,
-    placement_strategy: String,
-    run_stats: RunStats,
+    pub plan: String,
+    pub system: String,
+    pub replication_strategy: String,
+    pub placement_strategy: String,
+    pub run_stats: RunStats,
 }
 
 pub struct Experiment {
