@@ -174,7 +174,7 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
-    result.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.2.total_cmp(&b.2)));
+    result.sort_by(|a, b| a.2.total_cmp(&b.2).then(a.1.total_cmp(&b.1)));
 
     let width = result.iter().map(|x| x.0.len()).max().unwrap();
     println!("| {: <width$} | avg place | avg slowdown |", "algorithm", width = width);
