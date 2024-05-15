@@ -46,7 +46,7 @@ pub enum InputPlan {
 pub struct DagPlan {
     pub start_time: f64,
     pub dag: Rc<RefCell<Dag>>,
-    pub input: HashMap<usize, InputPlan>,
+    pub input: BTreeMap<usize, InputPlan>,
 }
 
 #[derive(Clone)]
