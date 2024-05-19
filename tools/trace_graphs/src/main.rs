@@ -17,7 +17,7 @@ struct Args {
     #[arg(short, long)]
     trace: PathBuf,
 
-    /// Path to output file with a graph.
+    /// Path to output folder with graphs.
     #[arg(short, long)]
     output: PathBuf,
 
@@ -36,6 +36,10 @@ struct Args {
     /// Add memory utilization to the graph.
     #[arg(long, default_value_t = false)]
     memory_utilization: bool,
+
+    /// Add graph with the number of running tasks.
+    #[arg(long, default_value_t = false)]
+    running_tasks: bool,
 
     /// Use 0-100 scale for utilization instead of 0-1.
     #[arg(long, default_value_t = false)]
@@ -104,15 +108,9 @@ struct Line {
     data: Vec<(f32, f32)>,
 }
 
-fn main() {
-    let args = Args::parse();
-    let trace: Trace = serde_json::from_str(&std::fs::read_to_string(args.trace).expect("Can't read trace file"))
-        .expect("Can't parse trace file as json");
-    if !args.cpu_utilization && !args.memory_utilization {
-        panic!("At least one of --cpu-utilization and --memory-utilization must be enabled");
-    }
-
-    let root = BitMapBackend::new(&args.output, (args.width, args.height)).into_drawing_area();
+fn draw_utilization_graphs(args: &Args, trace: &Trace) {
+    let path = args.output.join("utilization.png");
+    let root = BitMapBackend::new(&path, (args.width, args.height)).into_drawing_area();
     let _ = root.fill(&WHITE);
 
     let total_cores: u32 = trace.hosts.iter().map(|host| host.available_cores).sum();
@@ -124,7 +122,7 @@ fn main() {
         lines.push(Line {
             name: "CPU utilization".to_string(),
             color: BLUE.into(),
-            data: collect_usage_graph(&trace, |event| match event {
+            data: collect_usage_graph(trace, |event| match event {
                 TraceEvent::TaskStarted { cores, .. } => *cores as f32 / total_cores as f32,
                 _ => unreachable!(),
             }),
@@ -134,7 +132,7 @@ fn main() {
         lines.push(Line {
             name: "Memory utilization".to_string(),
             color: RED.into(),
-            data: collect_usage_graph(&trace, |event| match event {
+            data: collect_usage_graph(trace, |event| match event {
                 TraceEvent::TaskStarted { memory, .. } => *memory as f32 / total_memory as f32,
                 _ => unreachable!(),
             }),
@@ -211,4 +209,91 @@ fn main() {
         .draw()
         .unwrap();
     root.present().unwrap();
+}
+
+fn draw_running_tasks(args: &Args, trace: &Trace) {
+    let path = args.output.join("running_tasks.png");
+    let root = BitMapBackend::new(&path, (args.width, args.height)).into_drawing_area();
+    let _ = root.fill(&WHITE);
+
+    let line = Line {
+        name: "Running tasks".to_string(),
+        color: BLUE.into(),
+        data: collect_usage_graph(trace, |event| match event {
+            TraceEvent::TaskStarted { .. } => 1f32,
+            _ => unreachable!(),
+        }),
+    };
+    let maxy = line
+        .data
+        .iter()
+        .map(|&(_x, y)| y)
+        .max_by(|a, b| a.total_cmp(b))
+        .unwrap();
+
+    let root = root.margin(20, 20, 20, 20);
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(20)
+        .y_label_area_size(40)
+        .build_cartesian_2d(
+            line.data.iter().map(|event| event.0).fold(
+                Range {
+                    start: f32::MAX,
+                    end: 0.0,
+                },
+                |range, time| Range {
+                    start: range.start.min(time),
+                    end: range.end.max(time),
+                },
+            ),
+            0.0..maxy,
+        )
+        .unwrap();
+
+    chart
+        .configure_mesh()
+        .x_label_style(("sans-serif", args.font_size, &BLACK))
+        .y_label_style(("sans-serif", args.font_size, &BLACK))
+        .y_label_formatter(&|x: &f32| (x.round() as usize).to_string())
+        .draw()
+        .unwrap();
+
+    chart
+        .draw_series(LineSeries::new(
+            line.data,
+            ShapeStyle {
+                color: line.color,
+                filled: false,
+                stroke_width: args.stroke_width,
+            },
+        ))
+        .unwrap()
+        .label(line.name)
+        .legend(move |(x, y)| Rectangle::new([(x - 10, y + 2), (x + 10, y - 2)], line.color.filled()));
+
+    chart
+        .configure_series_labels()
+        .position(SeriesLabelPosition::UpperRight)
+        .label_font(("sans-serif", args.font_size, &BLACK))
+        .margin(20)
+        .legend_area_size(25)
+        .border_style(BLUE)
+        .background_style(BLUE.mix(0.1))
+        .draw()
+        .unwrap();
+    root.present().unwrap();
+}
+
+fn main() {
+    let args = Args::parse();
+    let trace: Trace = serde_json::from_str(&std::fs::read_to_string(&args.trace).expect("Can't read trace file"))
+        .expect("Can't parse trace file as json");
+    std::fs::create_dir_all(&args.output).expect("Can't create output folder");
+
+    if args.cpu_utilization || args.memory_utilization {
+        draw_utilization_graphs(&args, &trace);
+    }
+    if args.running_tasks {
+        draw_running_tasks(&args, &trace);
+    }
 }
