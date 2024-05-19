@@ -1,14 +1,14 @@
 network:
   type: FatTree
-  l2_switch_count: 8
+  l2_switch_count: 4
   l1_switch_count: 4
   hosts_per_switch: 8
-  downlink_bw: 40000
-  internal_bw: 4000000
-chunk_size: 64
+  downlink_bw: 32
+  internal_bw: 1000
+chunk_size: 24
 hosts:
 - name: default
-  speed: 1
-  available_space: 10240000
+  speed: 50
+  available_space: 1024000
   available_cores: 16
-  available_memory: 128000000
+  available_memory: 128000

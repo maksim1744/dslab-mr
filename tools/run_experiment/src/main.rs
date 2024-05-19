@@ -122,8 +122,9 @@ fn main() {
         config
             .plans
             .into_iter()
-            .map(|plan| Plan {
-                name: filename(&plan.plan_path),
+            .enumerate()
+            .map(|(i, plan)| Plan {
+                name: format!("{}_{}", i, filename(&plan.plan_path)),
                 plan_path: plan.plan_path,
                 dags_path: plan.dags_path,
             })
@@ -131,7 +132,8 @@ fn main() {
         config
             .systems
             .into_iter()
-            .map(|path| (filename(&path), SystemConfig::from_yaml(path)))
+            .enumerate()
+            .map(|(i, path)| (format!("{}_{}", i, filename(&path)), SystemConfig::from_yaml(path)))
             .collect(),
         config.replication_strategies,
         config.placement_strategies,

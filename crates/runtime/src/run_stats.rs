@@ -15,6 +15,8 @@ pub struct RunStats {
     pub total_network_traffic: f64,
     pub network_traffic_between_racks: f64,
     pub network_traffic_between_hosts: f64,
+    pub total_chunks_in_dfs: u64,
+    pub total_space_used: f64,
 
     #[serde(skip)]
     total_cores: u32,
@@ -39,6 +41,8 @@ impl RunStats {
             network_traffic_between_hosts: 0.0,
             total_cores,
             total_memory,
+            total_chunks_in_dfs: 0,
+            total_space_used: 0.0,
         }
     }
 

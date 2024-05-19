@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use dslab_core::{Id, Simulation};
-use dslab_network::models::{SharedBandwidthNetworkModel, TopologyAwareNetworkModel};
+use dslab_network::models::{ConstantBandwidthNetworkModel, TopologyAwareNetworkModel};
 use dslab_network::{Link, Network, NodeId};
 
 pub fn make_tree_topology(
@@ -18,14 +18,14 @@ pub fn make_tree_topology(
     let root_switch_name = "root_switch".to_string();
     network.add_node(
         &root_switch_name,
-        Box::new(SharedBandwidthNetworkModel::new(internal_bw, 0.)),
+        Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
     );
 
     for i in 0..star_count {
         let switch_name = format!("switch_{}", i);
         network.add_node(
             &switch_name,
-            Box::new(SharedBandwidthNetworkModel::new(internal_bw, 0.)),
+            Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
         );
         network.add_link(
             &root_switch_name,
@@ -35,7 +35,10 @@ pub fn make_tree_topology(
 
         for j in 0..hosts_per_star {
             let host_name = format!("host_{}_{}", i, j);
-            network.add_node(&host_name, Box::new(SharedBandwidthNetworkModel::new(internal_bw, 0.)));
+            network.add_node(
+                &host_name,
+                Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
+            );
             network.add_link(&host_name, &switch_name, Link::shared(downlink_bw, 1e-4));
         }
     }
@@ -60,7 +63,7 @@ pub fn make_fat_tree_topology(
         let switch_name = format!("l2_switch_{}", i);
         network.add_node(
             &switch_name,
-            Box::new(SharedBandwidthNetworkModel::new(internal_bw, 0.)),
+            Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
         );
     }
 
@@ -70,12 +73,15 @@ pub fn make_fat_tree_topology(
         let switch_name = format!("l1_switch_{}", i);
         network.add_node(
             &switch_name,
-            Box::new(SharedBandwidthNetworkModel::new(internal_bw, 0.)),
+            Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
         );
 
         for j in 0..hosts_per_switch {
             let host_name = format!("host_{}_{}", i, j);
-            network.add_node(&host_name, Box::new(SharedBandwidthNetworkModel::new(internal_bw, 0.)));
+            network.add_node(
+                &host_name,
+                Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
+            );
             network.add_link(&switch_name, &host_name, Link::shared(downlink_bw, 1e-4));
         }
 

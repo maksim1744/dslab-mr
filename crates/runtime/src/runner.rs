@@ -134,6 +134,23 @@ impl Runner {
         } else {
             log_info!(self.ctx, "all {} dags completed, execution finished", self.dags.len());
         }
+        self.run_stats.total_chunks_in_dfs = self.dfs.borrow().chunks_location().len() as u64;
+        let used_space = self
+            .dfs
+            .borrow()
+            .chunks_location()
+            .values()
+            .map(|locations| locations.len() as u64)
+            .sum::<u64>()
+            * self.dfs.borrow().chunk_size();
+        let free_space = self
+            .dfs
+            .borrow()
+            .hosts_info()
+            .values()
+            .map(|host| host.free_space)
+            .sum::<u64>();
+        self.run_stats.total_space_used = used_space as f64 / (used_space + free_space) as f64;
         self.run_stats
             .finalize(self.ctx.time() - self.dag_start.values().min_by(|a, b| a.total_cmp(b)).unwrap_or(&0.0));
     }
