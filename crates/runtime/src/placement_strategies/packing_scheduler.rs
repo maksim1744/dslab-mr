@@ -20,7 +20,8 @@ struct PreparedTask {
     stage_id: usize,
     task_id: usize,
     input: Vec<DataItem>,
-    resource_vec: [f64; 2],
+    cores: u32,
+    memory: u64,
     good_hosts: BTreeSet<Id>,
     good_racks: BTreeSet<u64>,
 }
@@ -35,6 +36,8 @@ pub struct PackingScheduler {
     other_host_input_penalty: f64,
     prepared_tasks: VecDeque<PreparedTask>,
     host_racks: BTreeMap<Id, u64>,
+    total_memory: u64,
+    total_cores: u32,
     rng: Pcg64,
 }
 
@@ -45,6 +48,8 @@ impl PackingScheduler {
             other_host_input_penalty,
             prepared_tasks: VecDeque::new(),
             host_racks: BTreeMap::new(),
+            total_memory: 0,
+            total_cores: 0,
             rng: Pcg64::seed_from_u64(123),
         }
     }
@@ -65,16 +70,23 @@ impl PackingScheduler {
         let mut result: BTreeMap<(usize, usize), Vec<DynamicTaskPlacement>> = BTreeMap::new();
         while !self.prepared_tasks.is_empty() {
             let task = self.prepared_tasks.front().unwrap();
+            let resource_vec = [
+                task.cores as f64 / self.total_cores as f64,
+                task.memory as f64 / self.total_memory as f64,
+            ];
             let best_host = compute_host_info
                 .iter()
-                .map(|(id, compute_host)| (*id, [compute_host.cores as f64, compute_host.memory as f64]))
-                .filter(|(_id, resources)| task.resource_vec.iter().zip(resources).all(|(need, have)| need <= have))
-                .map(|(id, resources)| {
+                .map(|(id, compute_host)| {
                     (
-                        id,
-                        task.resource_vec.iter().zip(resources).map(|(x, y)| x * y).sum::<f64>(),
+                        *id,
+                        [
+                            compute_host.cores as f64 / self.total_cores as f64,
+                            compute_host.memory as f64 / self.total_memory as f64,
+                        ],
                     )
                 })
+                .filter(|(_id, resources)| resource_vec.iter().zip(resources).all(|(need, have)| need <= have))
+                .map(|(id, resources)| (id, resource_vec.iter().zip(resources).map(|(x, y)| x * y).sum::<f64>()))
                 .map(|(id, score)| {
                     (
                         id,
@@ -103,8 +115,8 @@ impl PackingScheduler {
             }
             let task = self.prepared_tasks.pop_front().unwrap();
             let best_host = best_host.unwrap().0;
-            compute_host_info.get_mut(&best_host).unwrap().cores -= task.resource_vec[0].round() as u32;
-            compute_host_info.get_mut(&best_host).unwrap().memory -= task.resource_vec[1].round() as u64;
+            compute_host_info.get_mut(&best_host).unwrap().cores -= task.cores;
+            compute_host_info.get_mut(&best_host).unwrap().memory -= task.memory;
             result
                 .entry((task.dag_id, task.stage_id))
                 .or_default()
@@ -145,6 +157,8 @@ impl DynamicPlacementStrategy for PackingScheduler {
                 .copied()
                 .map(|host| (host, node_racks[&network.get_location(host)]))
                 .collect::<BTreeMap<_, _>>();
+            self.total_memory = compute_host_info.values().map(|host| host.memory).sum::<u64>();
+            self.total_cores = compute_host_info.values().map(|host| host.cores).sum::<u32>();
         }
         let all_racks = self.host_racks.values().copied().collect::<BTreeSet<_>>();
         let mut all_inputs = collect_all_input(input_data.get(&stage_id).unwrap_or(&Vec::new()), dfs);
@@ -174,10 +188,8 @@ impl DynamicPlacementStrategy for PackingScheduler {
                 stage_id,
                 task_id,
                 input: inputs.into_iter().map(|x| x.0).collect(),
-                resource_vec: [
-                    graph.stage(stage_id).task(task_id).cores() as f64,
-                    graph.stage(stage_id).task(task_id).memory() as f64,
-                ],
+                cores: graph.stage(stage_id).task(task_id).cores(),
+                memory: graph.stage(stage_id).task(task_id).memory(),
                 good_hosts: self
                     .host_racks
                     .keys()
