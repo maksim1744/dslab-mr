@@ -11,11 +11,12 @@ use dslab_dfs::{
     replication_strategy::ReplicationStrategy,
 };
 use dslab_mr::{
-    experiment::{Experiment, Plan},
+    experiment::{Experiment, Plan, RunResult},
     placement_strategies::{
         locality_aware::LocalityAwareStrategy, packing_scheduler::PackingScheduler, random::RandomPlacementStrategy,
     },
     placement_strategy::DynamicPlacementStrategy,
+    run_stats::RunStats,
     system::SystemConfig,
 };
 use env_logger::Builder;
@@ -48,6 +49,10 @@ struct Args {
     /// Path to file with results.
     #[arg(short, long)]
     output: PathBuf,
+
+    /// Do not run experiments, just read results from --output.
+    #[arg(long)]
+    precalculated: bool,
 
     /// Number of threads.
     #[arg(long, default_value_t = std::thread::available_parallelism().unwrap().get())]
@@ -109,6 +114,14 @@ fn placement_strategy_resolver(name: &str) -> Box<dyn DynamicPlacementStrategy> 
     }
 }
 
+struct ResultRow {
+    name: String,
+    avg_slowdown: f64,
+    max_slowdown: f64,
+    r2r_traffic: f64,
+    h2h_traffic: f64,
+}
+
 fn main() {
     Builder::from_default_env()
         .format(|buf, record| writeln!(buf, "{}", record.args()))
@@ -117,43 +130,55 @@ fn main() {
     let args = Args::parse();
     let config: Config = serde_yaml::from_str(&std::fs::read_to_string(args.config).expect("Can't read config file"))
         .expect("Can't parse config file");
-    let experiment = Experiment::new(
-        123,
-        config
-            .plans
-            .into_iter()
-            .enumerate()
-            .map(|(i, plan)| Plan {
-                name: format!("{}_{}", i, filename(&plan.plan_path)),
-                plan_path: plan.plan_path,
-                dags_path: plan.dags_path,
-            })
-            .collect(),
-        config
-            .systems
-            .into_iter()
-            .enumerate()
-            .map(|(i, path)| (format!("{}_{}", i, filename(&path)), SystemConfig::from_yaml(path)))
-            .collect(),
-        config.replication_strategies,
-        config.placement_strategies,
-        replication_strategy_resolver,
-        placement_strategy_resolver,
-        args.traces,
-    );
 
-    let result = experiment.run(args.threads);
-    File::create(args.output)
-        .expect("Can't create output file")
-        .write_all(serde_json::to_string_pretty(&result).unwrap().as_bytes())
-        .expect("Can't write to output file");
+    let result: Vec<RunResult> = if args.precalculated {
+        serde_json::from_str(&std::fs::read_to_string(args.output).expect("Can't read file with result"))
+            .expect("Can't parse file with result")
+    } else {
+        let experiment = Experiment::new(
+            123,
+            config
+                .plans
+                .into_iter()
+                .enumerate()
+                .map(|(i, plan)| Plan {
+                    name: format!("{}_{}", i, filename(&plan.plan_path)),
+                    plan_path: plan.plan_path,
+                    dags_path: plan.dags_path,
+                })
+                .collect(),
+            config
+                .systems
+                .into_iter()
+                .enumerate()
+                .map(|(i, path)| (format!("{}_{}", i, filename(&path)), SystemConfig::from_yaml(path)))
+                .collect(),
+            config.replication_strategies,
+            config.placement_strategies,
+            replication_strategy_resolver,
+            placement_strategy_resolver,
+            args.traces,
+        );
+
+        let result = experiment.run(args.threads);
+        File::create(args.output)
+            .expect("Can't create output file")
+            .write_all(serde_json::to_string_pretty(&result).unwrap().as_bytes())
+            .expect("Can't write to output file");
+        result
+    };
 
     let mut best_placement_algs: HashMap<(String, String, String), Vec<(f64, String)>> = HashMap::new();
-    for run in result.iter() {
+    let mut alg_runs: HashMap<String, Vec<RunStats>> = HashMap::new();
+    for run in result.into_iter() {
         best_placement_algs
             .entry((run.plan.clone(), run.system.clone(), run.replication_strategy.clone()))
             .or_default()
             .push((run.run_stats.average_dag_makespan, run.placement_strategy.clone()));
+        alg_runs
+            .entry(run.placement_strategy.clone())
+            .or_default()
+            .push(run.run_stats);
     }
 
     let mut places: BTreeMap<String, Vec<(usize, f64)>> = BTreeMap::new();
@@ -167,26 +192,44 @@ fn main() {
 
     let mut result = places
         .into_iter()
-        .map(|(alg, places)| {
-            (
-                alg,
-                places.iter().map(|x| x.0).sum::<usize>() as f64 / places.len() as f64,
-                places.iter().map(|x| x.1).sum::<f64>() / places.len() as f64,
-            )
+        .map(|(alg, places)| ResultRow {
+            name: alg.clone(),
+            avg_slowdown: places.iter().map(|x| x.1).sum::<f64>() / places.len() as f64,
+            max_slowdown: places.iter().map(|x| x.1).max_by(|a, b| a.total_cmp(b)).unwrap(),
+            r2r_traffic: alg_runs[&alg]
+                .iter()
+                .map(|run| run.network_traffic_between_racks / run.total_network_traffic * 100.)
+                .sum::<f64>()
+                / places.len() as f64,
+            h2h_traffic: alg_runs[&alg]
+                .iter()
+                .map(|run| run.network_traffic_between_hosts / run.total_network_traffic * 100.)
+                .sum::<f64>()
+                / places.len() as f64,
         })
         .collect::<Vec<_>>();
 
-    result.sort_by(|a, b| a.2.total_cmp(&b.2).then(a.1.total_cmp(&b.1)));
+    result.sort_by(|a, b| a.avg_slowdown.total_cmp(&b.avg_slowdown).then(a.name.cmp(&b.name)));
 
-    let width = result.iter().map(|x| x.0.len()).max().unwrap();
-    println!("| {: <width$} | avg place | avg slowdown |", "algorithm", width = width);
-    println!("|-{:-<width$}-|-----------|--------------|", "", width = width);
-    for (alg, place, slowdown) in result.into_iter() {
+    let width = result.iter().map(|x| x.name.len()).max().unwrap();
+    println!(
+        "| {: <width$} | avg slowdown | max slowdown | r2r traffic | h2h traffic |",
+        "algorithm",
+        width = width
+    );
+    println!(
+        "|-{:-<width$}-|--------------|--------------|-------------|-------------|",
+        "",
+        width = width
+    );
+    for row in result.into_iter() {
         println!(
-            "| {: <width$} | {: >9.3} | {: >12.3} |",
-            alg,
-            place,
-            slowdown,
+            "| {: <width$} | {: >12.3} | {: >12.3} | {: >10.2}% | {: >10.2}% |",
+            row.name,
+            row.avg_slowdown,
+            row.max_slowdown,
+            row.r2r_traffic,
+            row.h2h_traffic,
             width = width
         );
     }

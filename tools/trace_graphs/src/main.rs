@@ -21,6 +21,14 @@ struct Args {
     #[arg(short, long)]
     output: PathBuf,
 
+    /// Start of a time segment for a graph.
+    #[arg(long, default_value = None)]
+    from: Option<f32>,
+
+    /// End of a time segment for a graph.
+    #[arg(long, default_value = None)]
+    to: Option<f32>,
+
     /// Width of a graph in pixels.
     #[arg(long, default_value_t = 1920)]
     width: u32,
@@ -58,16 +66,27 @@ struct Args {
     font_size: u32,
 }
 
-fn collect_usage_graph<F>(trace: &Trace, metric: F) -> Vec<(f32, f32)>
+fn collect_usage_graph<F>(trace: &Trace, args: &Args, metric: F) -> Vec<(f32, f32)>
 where
     F: Fn(&TraceEvent) -> f32,
 {
     let mut points = Vec::new();
     let mut cur_usage = 0.0;
-    let time_range = (trace.events.last().unwrap().time() - trace.events[0].time()) as f32;
+    let from = args.from.unwrap_or(trace.events[0].time() as f32);
+    let to = args.to.unwrap_or(trace.events.last().unwrap().time() as f32);
+    let time_range = to - from;
 
     let mut added: HashMap<(usize, usize, usize), f32> = HashMap::new();
     for event in trace.events.iter() {
+        let time = event.time() as f32;
+        if time >= from && points.is_empty() {
+            points.push((time, cur_usage));
+        }
+        if time >= to {
+            points.push((time, cur_usage));
+            break;
+        }
+
         cur_usage += match event {
             TraceEvent::TaskStarted {
                 dag_id,
@@ -87,7 +106,6 @@ where
             } => -added.remove(&(*dag_id, *stage_id, *task_id)).unwrap(),
         };
 
-        let time = event.time() as f32;
         if points.is_empty() {
             points.push((time, 0.0));
         } else {
@@ -122,7 +140,7 @@ fn draw_utilization_graphs(args: &Args, trace: &Trace) {
         lines.push(Line {
             name: "CPU utilization".to_string(),
             color: BLUE.into(),
-            data: collect_usage_graph(trace, |event| match event {
+            data: collect_usage_graph(trace, args, |event| match event {
                 TraceEvent::TaskStarted { cores, .. } => *cores as f32 / total_cores as f32,
                 _ => unreachable!(),
             }),
@@ -132,7 +150,7 @@ fn draw_utilization_graphs(args: &Args, trace: &Trace) {
         lines.push(Line {
             name: "Memory utilization".to_string(),
             color: RED.into(),
-            data: collect_usage_graph(trace, |event| match event {
+            data: collect_usage_graph(trace, args, |event| match event {
                 TraceEvent::TaskStarted { memory, .. } => *memory as f32 / total_memory as f32,
                 _ => unreachable!(),
             }),
@@ -158,20 +176,29 @@ fn draw_utilization_graphs(args: &Args, trace: &Trace) {
         .x_label_area_size(20)
         .y_label_area_size(40)
         .build_cartesian_2d(
-            lines
-                .iter()
-                .flat_map(|line| line.data.iter())
-                .map(|event| event.0)
-                .fold(
-                    Range {
-                        start: f32::MAX,
-                        end: 0.0,
-                    },
-                    |range, time| Range {
-                        start: range.start.min(time),
-                        end: range.end.max(time),
-                    },
-                ),
+            {
+                let mut range = lines
+                    .iter()
+                    .flat_map(|line| line.data.iter())
+                    .map(|event| event.0)
+                    .fold(
+                        Range {
+                            start: f32::MAX,
+                            end: 0.0,
+                        },
+                        |range, time| Range {
+                            start: range.start.min(time),
+                            end: range.end.max(time),
+                        },
+                    );
+                if let Some(from) = args.from {
+                    range.start = from;
+                }
+                if let Some(to) = args.to {
+                    range.end = to;
+                }
+                range
+            },
             0.0..maxy,
         )
         .unwrap();
@@ -219,7 +246,7 @@ fn draw_running_tasks(args: &Args, trace: &Trace) {
     let line = Line {
         name: "Running tasks".to_string(),
         color: BLUE.into(),
-        data: collect_usage_graph(trace, |event| match event {
+        data: collect_usage_graph(trace, args, |event| match event {
             TraceEvent::TaskStarted { .. } => 1f32,
             _ => unreachable!(),
         }),
@@ -236,16 +263,25 @@ fn draw_running_tasks(args: &Args, trace: &Trace) {
         .x_label_area_size(20)
         .y_label_area_size(40)
         .build_cartesian_2d(
-            line.data.iter().map(|event| event.0).fold(
-                Range {
-                    start: f32::MAX,
-                    end: 0.0,
-                },
-                |range, time| Range {
-                    start: range.start.min(time),
-                    end: range.end.max(time),
-                },
-            ),
+            {
+                let mut range = line.data.iter().map(|event| event.0).fold(
+                    Range {
+                        start: f32::MAX,
+                        end: 0.0,
+                    },
+                    |range, time| Range {
+                        start: range.start.min(time),
+                        end: range.end.max(time),
+                    },
+                );
+                if let Some(from) = args.from {
+                    range.start = from;
+                }
+                if let Some(to) = args.to {
+                    range.end = to;
+                }
+                range
+            },
             0.0..maxy,
         )
         .unwrap();

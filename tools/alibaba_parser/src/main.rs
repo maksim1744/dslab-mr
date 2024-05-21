@@ -92,6 +92,14 @@ struct Args {
     /// Bounds of uniform distribute for initial data size. Will be multiplied by total number of instances of all tasks in a job.
     #[arg(long, default_value_t = 2000.0)]
     initial_data_size_to: f64,
+
+    /// Multiply number of instances by a random number on an interval.
+    #[arg(long, default_value_t = 1.0)]
+    instances_multiplier_from: f64,
+
+    /// Multiply number of instances by a random number on an interval.
+    #[arg(long, default_value_t = 1.0)]
+    instances_multiplier_to: f64,
 }
 
 // https://github.com/alibaba/clusterdata/blob/master/cluster-trace-v2018/schema.txt
@@ -157,7 +165,7 @@ impl TryFrom<BatchTaskRaw> for BatchTask {
     }
 }
 
-fn read_batch_task(args: &Args) -> BTreeMap<i64, Vec<BatchTask>> {
+fn read_batch_task(args: &Args, rng: &mut Pcg64) -> BTreeMap<i64, Vec<BatchTask>> {
     let mut successes = 0;
     let mut failures = 0;
     let mut job_tasks: BTreeMap<i64, Vec<BatchTask>> = BTreeMap::new();
@@ -170,7 +178,10 @@ fn read_batch_task(args: &Args) -> BTreeMap<i64, Vec<BatchTask>> {
     {
         let raw_task = result.unwrap();
         let job_name = raw_task.job_name.clone();
-        if let Ok(task) = BatchTask::try_from(raw_task) {
+        if let Ok(mut task) = BatchTask::try_from(raw_task) {
+            task.instances = (task.instances as f64
+                * rng.gen_range(args.instances_multiplier_from..=args.instances_multiplier_to))
+            .round() as i64;
             job_tasks.entry(task.job_id).or_default().push(task);
             successes += 1;
         } else {
@@ -211,7 +222,15 @@ fn read_batch_task(args: &Args) -> BTreeMap<i64, Vec<BatchTask>> {
             .flat_map(|t| t.dependencies.iter().copied())
             .all(|t| task_ids.contains(&t))
     });
-    println!("batch_task.csv: found {} jobs", job_tasks.len());
+    println!(
+        "batch_task.csv: found {} jobs, {} instances",
+        job_tasks.len(),
+        job_tasks
+            .values()
+            .flat_map(|t| t.iter())
+            .map(|t| t.instances)
+            .sum::<i64>()
+    );
     if !job_tasks.is_empty() {
         let mut jobs_by_task_count: BTreeMap<usize, usize> = BTreeMap::new();
         for job in job_tasks.values() {
@@ -234,7 +253,7 @@ fn main() {
 
     let mut rng = Pcg64::seed_from_u64(123);
 
-    let jobs = read_batch_task(&args);
+    let jobs = read_batch_task(&args, &mut rng);
     let mut plan = YamlSimulationPlan {
         dags: Vec::new(),
         global_inputs: Vec::new(),
