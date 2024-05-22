@@ -1,3 +1,5 @@
+//! Common network topologies and useful functions.
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -6,6 +8,9 @@ use dslab_core::{Id, Simulation};
 use dslab_network::models::{ConstantBandwidthNetworkModel, TopologyAwareNetworkModel};
 use dslab_network::{Link, Network, NodeId};
 
+/// Creates tree topology with `star_count` racks and `hosts_per_star` hosts on each one.
+/// * `downlink_bw` corresponds to a link bandwidth between rack switch and each host.
+/// * `internal_bw` corresponds to an internal bandwidth of each host.
 pub fn make_tree_topology(
     sim: &mut Simulation,
     star_count: usize,
@@ -49,6 +54,12 @@ pub fn make_tree_topology(
     network_rc
 }
 
+/// Creates fat tree topology.
+/// * `l2_switch_count` --- number of top-level switches.
+/// * `l1_switch_count` --- number of racks.
+/// * `hosts_per_switch` --- number of hosts per rack.
+/// * `downlink_bw` --- link bandwidth between rack switch and each host.
+/// * `internal_bw` --- internal bandwidth of each host.
 pub fn make_fat_tree_topology(
     sim: &mut Simulation,
     l2_switch_count: usize,
@@ -96,6 +107,9 @@ pub fn make_fat_tree_topology(
     network_rc
 }
 
+/// Returns rack id for a given simulation component.
+///
+/// Works in linear time, consider using `get_all_racks` instead of calling this function for a large number of components.
 pub fn get_rack(network: &Network, id: Id) -> Option<u64> {
     let id = network.get_location(id);
     network
@@ -105,6 +119,9 @@ pub fn get_rack(network: &Network, id: Id) -> Option<u64> {
         .and_then(|s| s.split('_').nth(1).and_then(|s| s.parse().ok()))
 }
 
+/// Returns rack id for all nodes in a network.
+///
+/// To find location of a simulation component using this map first call [get_location](Network::get_location).
 pub fn get_all_racks(network: &Network) -> BTreeMap<NodeId, u64> {
     network
         .get_nodes()

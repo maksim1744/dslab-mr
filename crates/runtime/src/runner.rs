@@ -1,3 +1,5 @@
+//! Main component of a simulation.
+
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
@@ -24,22 +26,25 @@ use crate::{
 
 use super::{dag::Dag, data_item::DataItem};
 
+/// Event to start new DAG execution.
 #[derive(Clone, Serialize)]
 pub struct NewDag {
+    /// DAG.
     #[serde(skip)]
     pub dag: Rc<RefCell<Dag>>,
+    /// Information about initial data for each input stage.
     #[serde(skip)]
     pub initial_data: HashMap<usize, Vec<DataItem>>,
 }
 
 #[derive(Clone, Serialize)]
-pub struct TaskCompleted {
+struct TaskCompleted {
     task_id: u64,
     host: Id,
 }
 
 #[derive(Debug)]
-pub struct RunningTask {
+struct RunningTask {
     dag_id: usize,
     stage_id: usize,
     task_id: usize,
@@ -54,12 +59,15 @@ impl RunningTask {
     }
 }
 
-pub struct RunningStage {
+struct RunningStage {
     running_tasks: usize,
     outputs: Vec<DataItem>,
     waiting_for_replication: HashSet<DataId>,
 }
 
+/// Main component of a simulation.
+///
+/// Manages interaction between user strategies, simulation and DFS.
 pub struct Runner {
     placement_strategy: Box<dyn DynamicPlacementStrategy>,
     dags: Vec<Rc<RefCell<Dag>>>,
@@ -82,6 +90,7 @@ pub struct Runner {
 }
 
 impl Runner {
+    /// Creates new runner.
     pub fn new(
         placement_strategy: Box<dyn DynamicPlacementStrategy>,
         compute_hosts: BTreeMap<Id, ComputeHost>,
@@ -123,6 +132,7 @@ impl Runner {
         }
     }
 
+    /// Finalizes and logs DAG results.
     pub fn finalize(&mut self) {
         if self.run_stats.completed_dag_count != self.dags.len() {
             log_error!(
@@ -155,10 +165,12 @@ impl Runner {
             .finalize(self.ctx.time() - self.dag_start.values().min_by(|a, b| a.total_cmp(b)).unwrap_or(&0.0));
     }
 
+    /// Returns stats of a simulation. Call [finalize](Runner::finalize) before that.
     pub fn run_stats(&self) -> &RunStats {
         &self.run_stats
     }
 
+    /// Returns trace of a simulation.
     pub fn trace(&self) -> &Trace {
         &self.trace
     }

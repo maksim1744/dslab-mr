@@ -1,3 +1,5 @@
+//! Randomized placement strategy.
+
 use std::collections::BTreeMap;
 
 use dslab_core::Id;
@@ -15,6 +17,10 @@ use crate::{
 
 use super::common::{collect_all_input, shuffle};
 
+/// Randomized placement strategy.
+///
+/// Just places each task on a random host.
+/// Inputs are also distributed randomly but evenly between tasks.
 pub struct RandomPlacementStrategy {
     rng: Pcg64,
 }

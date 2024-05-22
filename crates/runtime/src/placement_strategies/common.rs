@@ -1,3 +1,5 @@
+//! Some useful functions for placement strategies.
+
 use dslab_core::Id;
 use dslab_dfs::dfs::DistributedFileSystem;
 use rand::Rng;
@@ -5,6 +7,11 @@ use rand_pcg::Pcg64;
 
 use crate::data_item::DataItem;
 
+/// Helper function to collect all inputs along with the location of each one.
+///
+/// * `DataItem::Replicated` is split into individual chunks.
+/// * `DataItem::Local` is split into parts with the size of [chunk_size](DistributedFileSystem::chunk_size) except at most one.
+/// * `DataItem::Chunk` remains unchanged.
 pub fn collect_all_input(input: &[DataItem], dfs: &DistributedFileSystem) -> Vec<(DataItem, Vec<Id>)> {
     let mut all_inputs = Vec::new();
     for data_item in input.iter() {
@@ -52,6 +59,7 @@ pub fn collect_all_input(input: &[DataItem], dfs: &DistributedFileSystem) -> Vec
     all_inputs
 }
 
+/// Helper function to randomly shuffle an array.
 pub fn shuffle<T>(rng: &mut Pcg64, data: &mut [T]) {
     for i in 1..data.len() {
         data.swap(i, rng.gen_range(0..=i));

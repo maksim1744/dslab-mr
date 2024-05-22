@@ -1,3 +1,5 @@
+//! Implementation of a packing scheduler.
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use dslab_core::Id;
@@ -31,6 +33,14 @@ struct ComputHostInfo {
     memory: u64,
 }
 
+/// Implementation of a packing scheduler.
+///
+/// It first splits all input data uniformly among all tasks while trying to group them by host.
+/// Then it puts all tasks in a queue and when there is at least one host with enough resources to run next task
+/// it chooses the best host according to scalar product of resource needs for a task and available resources on a host,
+/// multiplied by locality score. Locality score is `1` when all input is on the target host,
+/// `other_host_input_penalty` if all the data is on the same rack, and `other_host_input_penalty * other_rack_input_penalty`
+/// if some inputs are on a different rack.
 pub struct PackingScheduler {
     other_rack_input_penalty: f64,
     other_host_input_penalty: f64,
@@ -42,6 +52,7 @@ pub struct PackingScheduler {
 }
 
 impl PackingScheduler {
+    /// Creates new scheduler.
     pub fn new(other_rack_input_penalty: f64, other_host_input_penalty: f64) -> Self {
         Self {
             other_rack_input_penalty,

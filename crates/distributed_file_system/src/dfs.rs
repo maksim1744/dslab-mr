@@ -1,3 +1,5 @@
+//! Model of a distributed file system.
+
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -25,6 +27,7 @@ struct CopyChunkTask {
     requester_id: Id,
 }
 
+/// Model of a distributed file system.
 pub struct DistributedFileSystem {
     replication_strategy: Box<dyn ReplicationStrategy>,
     chunk_size: u64,
@@ -41,72 +44,97 @@ pub struct DistributedFileSystem {
     ctx: SimulationContext,
 }
 
+/// Event to register data in DFS.
 #[derive(Clone, Serialize)]
 pub struct RegisterData {
+    /// Size of the data.
     pub size: u64,
+    /// Host with the data.
     pub host: Id,
+    /// Id of the data.
     pub data_id: DataId,
+    /// Additional flag which will be passed to replication strategy.
+    /// Can be used to register data on an original host without replication it immediately.
     pub need_to_replicate: bool,
 }
 
-#[derive(Clone, Serialize)]
-pub struct UploadChunk {
-    pub src: Id,
-    pub dst: Id,
-    pub chunk_id: ChunkId,
-}
-
-#[derive(Clone, Serialize)]
-pub struct CopyChunk {
-    pub src: Id,
-    pub dst: Id,
-    pub chunk_id: ChunkId,
-}
-
-#[derive(Clone, Serialize)]
-pub struct CopiedChunk {
-    pub src: Id,
-    pub dst: Id,
-    pub chunk_id: ChunkId,
-}
-
+/// Response to the corresponding [RegisterData] event after all chunks are distributed to hosts.
 #[derive(Clone, Serialize)]
 pub struct RegisteredData {
     pub data_id: DataId,
 }
 
 #[derive(Clone, Serialize)]
-pub struct EraseChunkOnHost {
-    pub host: Id,
+struct UploadChunk {
+    src: Id,
+    dst: Id,
+    chunk_id: ChunkId,
+}
+
+/// Event to copy chunk `chunk_id` from `src` to `dst`.
+#[derive(Clone, Serialize)]
+pub struct CopyChunk {
+    /// Host with the chunk.
+    pub src: Id,
+    /// Where to copy to.
+    pub dst: Id,
+    /// Chunk id.
     pub chunk_id: ChunkId,
 }
 
+/// Response to the corresponding [CopyChunk] event.
+#[derive(Clone, Serialize)]
+pub struct CopiedChunk {
+    /// Host with the chunk.
+    pub src: Id,
+    /// Host where the chunk was copied.
+    pub dst: Id,
+    /// Chunk id.
+    pub chunk_id: ChunkId,
+}
+
+/// Event to erase a chunk from host.
+#[derive(Clone, Serialize)]
+pub struct EraseChunkOnHost {
+    /// Host with the chunk.
+    pub host: Id,
+    /// Chunk id.
+    pub chunk_id: ChunkId,
+}
+
+/// A response to some incoming event notifying that requested host doesn't exist.
 #[derive(Clone, Serialize)]
 pub struct UnknownHost {
+    /// Unknown host.
     pub host: Id,
 }
 
-#[derive(Clone, Serialize)]
-pub struct UnknownData {
-    pub chunk_id: ChunkId,
-}
-
+/// Response to [CopyChunk] or [EraseChunkOnHost] in case requested chunk doesn't exist on the host.
 #[derive(Clone, Serialize)]
 pub struct NoSuchChunkOnHost {
+    /// Host with the error.
     pub host: Id,
+    /// Requested chunk.
     pub chunk_id: ChunkId,
 }
 
+/// Response to [CopyChunk] in case there is not enough space on target host.
 #[derive(Clone, Serialize)]
 pub struct NotEnoughSpace {
+    /// Target host.
     pub host: Id,
+    /// Current amount of free space.
     pub free_space: u64,
+    /// Requested space.
     pub need_space: u64,
 }
 
+/// Response to [CopyChunk] in case the chunk already exists on a target host.
 #[derive(Clone, Serialize)]
 pub struct ChunkAlreadyExists {
+    /// Target host.
     pub host: Id,
+    /// Chunk id.
     pub chunk_id: ChunkId,
 }
 
@@ -240,6 +268,7 @@ impl EventHandler for DistributedFileSystem {
 }
 
 impl DistributedFileSystem {
+    /// Creates new [DistributedFileSystem].
     pub fn new(
         host_info: BTreeMap<Id, HostInfo>,
         data_chunks: HashMap<DataId, Vec<ChunkId>>,
@@ -273,39 +302,48 @@ impl DistributedFileSystem {
         }
     }
 
+    /// Returns simulation id of the component.
     pub fn id(&self) -> Id {
         self.ctx.id()
     }
 
+    /// Returns chunk ids of chunks which data `data_id` was split into.
     pub fn data_chunks(&self, data_id: DataId) -> Option<&Vec<ChunkId>> {
         self.data_chunks.get(&data_id)
     }
 
+    /// Same as [DistributedFileSystem::data_chunks], but `HashMap` for all registered data.
     pub fn datas_chunks(&self) -> &HashMap<DataId, Vec<ChunkId>> {
         &self.data_chunks
     }
 
-    pub fn chunks_location(&self) -> &HashMap<ChunkId, BTreeSet<Id>> {
-        &self.chunks_location
-    }
-
+    /// Returns locations of all chunk replicas.
     pub fn chunk_location(&self, chunk_id: ChunkId) -> Option<&BTreeSet<Id>> {
         self.chunks_location.get(&chunk_id)
     }
 
+    /// Same as [DistributedFileSystem::chunk_location], but `HashMap` for all existing chunks.
+    pub fn chunks_location(&self) -> &HashMap<ChunkId, BTreeSet<Id>> {
+        &self.chunks_location
+    }
+
+    /// Map with info about all hosts in the system.
     pub fn hosts_info(&self) -> &BTreeMap<Id, HostInfo> {
         &self.host_info
     }
 
+    /// Chunk size.
     pub fn chunk_size(&self) -> u64 {
         self.chunk_size
     }
 
+    /// Next data id which can be used when registering new data.
     pub fn next_data_id(&mut self) -> u64 {
         self.next_data_id += 1;
         self.next_data_id - 1
     }
 
+    /// Checkes whether chunk already exists on a host and sends events to `notify_id` in case it doesn't or if there was an error.
     fn chunk_exists(&self, host: Id, chunk_id: ChunkId, notify_id: Id) -> bool {
         if !self.host_info.contains_key(&host) {
             self.ctx.emit_now(UnknownHost { host }, notify_id);
@@ -318,6 +356,7 @@ impl DistributedFileSystem {
         true
     }
 
+    /// Checkes whether the chunk `chunk_id` can be added to `host` and sends events to `notify_id` in case it doesn't or if there was an error.
     fn can_add_chunk(&self, host: Id, chunk_id: ChunkId, notify_id: Id) -> bool {
         if !self.host_info.contains_key(&host) {
             self.ctx.emit_now(UnknownHost { host }, notify_id);
@@ -341,6 +380,7 @@ impl DistributedFileSystem {
         true
     }
 
+    /// Performs necessary checks and starts copying chunk from one host to another.
     fn copy_chunk(&mut self, src: Id, dst: Id, chunk_id: ChunkId, requester_id: Id) {
         self.host_info.get_mut(&dst).unwrap().free_space -= self.chunk_size;
         let transfer_id = self

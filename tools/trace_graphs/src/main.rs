@@ -11,6 +11,7 @@ use plotters::{
     style::{Color, RGBAColor, ShapeStyle, BLACK, BLUE, RED, WHITE},
 };
 
+/// Draws some graphs from simulation trace.
 #[derive(Parser, Debug)]
 struct Args {
     /// Path to trace file.

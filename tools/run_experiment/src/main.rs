@@ -36,6 +36,7 @@ struct Config {
     placement_strategies: Vec<String>,
 }
 
+/// Runs batch experiment.
 #[derive(Parser, Debug)]
 struct Args {
     /// Path to config.

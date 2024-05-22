@@ -19,9 +19,11 @@ use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use serde::Deserialize;
 
+/// Parses 2018 alibaba traces <https://github.com/alibaba/clusterdata/tree/master/cluster-trace-v2018> into simulation plan.
+/// Only batch_task.csv is needed.
 #[derive(Parser, Debug)]
 struct Args {
-    /// Path to a folder with extracted csv traces.
+    /// Path to a folder with extracted csv alibaba traces.
     #[arg(short, long)]
     traces_path: PathBuf,
 

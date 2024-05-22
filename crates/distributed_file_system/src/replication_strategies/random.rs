@@ -1,3 +1,5 @@
+//! Randomized replication strategy.
+
 use std::collections::BTreeMap;
 
 use dslab_core::Id;
@@ -11,11 +13,15 @@ use crate::{
     replication_strategy::ReplicationStrategy,
 };
 
+/// Represents rules for chunk distribution.
 pub enum ChunkDistribution {
+    /// Allow putting chunk replicas on the same rack.
     AllowEverything,
+    /// Prohibit putting chunk replicas on the same rack.
     ProhibitSameRack,
 }
 
+/// Replication strategy which places each chunk on uniformly random hosts while respection input parameters.
 pub struct RandomReplicationStrategy {
     replication_factor: usize,
     chunk_distribution: ChunkDistribution,
@@ -23,6 +29,7 @@ pub struct RandomReplicationStrategy {
 }
 
 impl RandomReplicationStrategy {
+    /// Creates new RandomReplicationStrategy with given parameters.
     pub fn new(replication_factor: usize, chunk_distribution: ChunkDistribution) -> Self {
         Self {
             replication_factor,

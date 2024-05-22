@@ -1,3 +1,5 @@
+//! Helper struct for running multiple experiments.
+
 use std::{
     io::Write,
     path::PathBuf,
@@ -20,29 +22,41 @@ use crate::{
     system::SystemConfig,
 };
 
+/// Plan which will be converted to [SimulationPlan].
 #[derive(Clone)]
 pub struct Plan {
+    /// Plan name.
     pub name: String,
+    /// Path to plan in YAML format.
     pub plan_path: PathBuf,
+    /// Path to a folder with dags in YAML format.
     pub dags_path: PathBuf,
 }
 
+/// Represents one simulation run.
 struct Run {
-    pub plan: Plan,
-    pub system: (String, SystemConfig),
-    pub replication_strategy: String,
-    pub placement_strategy: String,
+    plan: Plan,
+    system: (String, SystemConfig),
+    replication_strategy: String,
+    placement_strategy: String,
 }
 
+/// Represents result of a single simulation run.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunResult {
+    /// Plan name.
     pub plan: String,
+    /// System name.
     pub system: String,
+    /// Replication strategy name.
     pub replication_strategy: String,
+    /// Placement strategy name.
     pub placement_strategy: String,
+    /// Statistics from a run.
     pub run_stats: RunStats,
 }
 
+/// Helper struct for running multiple experiments.
 pub struct Experiment {
     seed: u64,
     plans: Vec<Plan>,
@@ -55,6 +69,16 @@ pub struct Experiment {
 }
 
 impl Experiment {
+    /// Creates new experiment. There will be one simulation run for each combination of
+    /// replication strategy, placement strategy, plan, system.
+    /// * `seed` --- seed for each simulation.
+    /// * `plans` --- simulation plans.
+    /// * `systems` --- system configs along with their names.
+    /// * `replication_strategies` --- names of replication strategies.
+    /// * `placement_strategies` --- names of placement strategies.
+    /// * `replication_strategy_resolver` --- function to convert a string from `replication_strategies` to [ReplicationStrategy].
+    /// * `placement_strategy_resolver` --- function to convert a string from `placement_strategies` to [DynamicPlacementStrategy].
+    /// * `traces_folder` --- optional folder to save traces of all simulations to.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         seed: u64,
@@ -78,6 +102,7 @@ impl Experiment {
         }
     }
 
+    /// Run all simulations using given number of threads and collect results.
     pub fn run(self, threads: usize) -> Vec<RunResult> {
         if let Some(dir) = &self.traces_folder {
             std::fs::create_dir_all(dir).unwrap();

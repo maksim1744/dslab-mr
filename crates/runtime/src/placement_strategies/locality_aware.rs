@@ -1,3 +1,5 @@
+//! Implementation of a locality aware strategy.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use dslab_core::Id;
@@ -14,17 +16,22 @@ use crate::{
     placement_strategy::{PlacementStrategy, TaskPlacement},
 };
 
+/// Implementation of a locality aware strategy.
+///
+/// The strategy tries to minize amount of host-to-host and rack-to-rack data transfers disregarding amount of free resources on hosts.
 pub struct LocalityAwareStrategy {
     rng: Pcg64,
 }
 
 impl LocalityAwareStrategy {
+    /// Creates new strategy.
     pub fn new() -> Self {
         Self {
             rng: Pcg64::seed_from_u64(123),
         }
     }
 
+    /// Helper to pick random element from an array.
     fn pick_random<'a, T>(&mut self, data: &'a [T]) -> &'a T {
         &data[self.rng.gen_range(0..data.len())]
     }

@@ -1,3 +1,5 @@
+//! Simulation wrapper to simplify running cluster simulations.
+
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -27,31 +29,59 @@ use crate::{
     system::{NetworkConfig, SystemConfig},
 };
 
+/// Data which will be uploaded to DFS in advance and can be used as input for some DAGs.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GlobalInputPlan {
+    /// Original host of the data.
     pub host: String,
+    /// Size of the data.
     pub size: u64,
 }
 
+/// Where to get input from for an input stage.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum InputPlan {
-    RegisterOnStart { host: String },
-    RegisterInitially { host: String },
-    Local { host: String },
-    GlobalInput { id: usize },
+    /// Upload input to DFS right before starting DAG execution.
+    RegisterOnStart {
+        /// Original host with the data.
+        host: String,
+    },
+    /// Upload input to DFS in advance.
+    RegisterInitially {
+        /// Original host with the data.
+        host: String,
+    },
+    /// Local data on a host.
+    Local {
+        /// Host with the data.
+        host: String,
+    },
+    /// See [GlobalInputPlan].
+    GlobalInput {
+        /// Index of needed [GlobalInputPlan].
+        id: usize,
+    },
 }
 
+/// Plan for a single DAG.
 #[derive(Clone)]
 pub struct DagPlan {
+    /// When to start DAG execution. If some [inputs](InputPlan) are marked as `RegisterOnStart` they will be registered
+    /// at this moment and then the DAG will be started.
     pub start_time: f64,
+    /// DAG.
     pub dag: Rc<RefCell<Dag>>,
+    /// Information about inputs for all input stages.
     pub input: BTreeMap<usize, InputPlan>,
 }
 
+/// Plan for a simulation.
 #[derive(Clone)]
 pub struct SimulationPlan {
+    /// Information about DAGs.
     pub dags: Vec<DagPlan>,
+    /// Global inputs which can be used by all DAGs, see [GlobalInputPlan].
     pub global_inputs: Vec<GlobalInputPlan>,
 }
 
@@ -66,6 +96,7 @@ impl EventHandler for DataOnHost {
     }
 }
 
+/// Manages data uploads to DFS and starts DAGs at the correct time points by sending [NewDag] to [Runner].
 struct DagManager {
     plan: SimulationPlan,
     dfs: Rc<RefCell<DistributedFileSystem>>,
@@ -238,6 +269,7 @@ impl EventHandler for DagManager {
     }
 }
 
+/// Simulation wrapper to simplify running cluster simulations.
 pub struct ClusterSimulation {
     pub sim: Simulation,
     plan: SimulationPlan,
@@ -248,7 +280,7 @@ pub struct ClusterSimulation {
 }
 
 impl ClusterSimulation {
-    #[allow(clippy::too_many_arguments)]
+    /// Creates new cluster simulation.
     pub fn new(
         seed: u64,
         plan: SimulationPlan,
@@ -267,6 +299,7 @@ impl ClusterSimulation {
         }
     }
 
+    /// Runs simulation and returns results.
     pub fn run(mut self) -> RunStats {
         let network = match self.system_config.network {
             NetworkConfig::Tree {
