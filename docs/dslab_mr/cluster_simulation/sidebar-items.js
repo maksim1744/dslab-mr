@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["InputPlan"],"struct":["ClusterSimulation","DagPlan","GlobalInputPlan","SimulationPlan"]};
