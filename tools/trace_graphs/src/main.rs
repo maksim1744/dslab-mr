@@ -8,7 +8,7 @@ use plotters::{
     drawing::IntoDrawingArea,
     element::Rectangle,
     series::LineSeries,
-    style::{Color, RGBAColor, ShapeStyle, BLACK, BLUE, RED, WHITE},
+    style::{Color, RGBAColor, ShapeStyle, BLACK, BLUE, GREEN, RED, WHITE},
 };
 
 /// Draws some graphs from simulation trace.
@@ -38,6 +38,10 @@ struct Args {
     #[arg(long, default_value_t = 1080)]
     height: u32,
 
+    /// Enable all graphs.
+    #[arg(long, default_value_t = false)]
+    all: bool,
+
     /// Add cpu utilization to the graph.
     #[arg(long, default_value_t = false)]
     cpu_utilization: bool,
@@ -46,9 +50,25 @@ struct Args {
     #[arg(long, default_value_t = false)]
     memory_utilization: bool,
 
+    /// Add graph with the number of ready tasks.
+    #[arg(long, default_value_t = false)]
+    ready_tasks: bool,
+
+    /// Add graph with the number of queued tasks.
+    #[arg(long, default_value_t = false)]
+    queued_tasks: bool,
+
+    /// Add graph with the number of assigned tasks.
+    #[arg(long, default_value_t = false)]
+    assigned_tasks: bool,
+
     /// Add graph with the number of running tasks.
     #[arg(long, default_value_t = false)]
     running_tasks: bool,
+
+    /// Add graph with the number of running DAGs.
+    #[arg(long, default_value_t = false)]
+    running_dags: bool,
 
     /// Use 0-100 scale for utilization instead of 0-1.
     #[arg(long, default_value_t = false)]
@@ -67,9 +87,21 @@ struct Args {
     font_size: u32,
 }
 
+#[derive(Copy, Clone)]
+enum MetricChange {
+    Add {
+        event_path: (usize, usize, usize),
+        value: f32,
+    },
+    Remove {
+        event_path: (usize, usize, usize),
+    },
+    None,
+}
+
 fn collect_usage_graph<F>(trace: &Trace, args: &Args, metric: F) -> Vec<(f32, f32)>
 where
-    F: Fn(&TraceEvent) -> f32,
+    F: Fn(&TraceEvent) -> MetricChange,
 {
     let mut points = Vec::new();
     let mut cur_usage = 0.0;
@@ -80,31 +112,24 @@ where
     let mut added: HashMap<(usize, usize, usize), f32> = HashMap::new();
     for event in trace.events.iter() {
         let time = event.time() as f32;
+        if time < from {
+            continue;
+        }
         if time >= from && points.is_empty() {
             points.push((time, cur_usage));
         }
-        if time >= to {
+        if time > to {
             points.push((time, cur_usage));
             break;
         }
 
-        cur_usage += match event {
-            TraceEvent::TaskStarted {
-                dag_id,
-                stage_id,
-                task_id,
-                ..
-            } => {
-                let value = metric(event);
-                added.insert((*dag_id, *stage_id, *task_id), value);
+        cur_usage += match metric(event) {
+            MetricChange::Add { event_path, value } => {
+                added.insert(event_path, value);
                 value
             }
-            TraceEvent::TaskCompleted {
-                dag_id,
-                stage_id,
-                task_id,
-                ..
-            } => -added.remove(&(*dag_id, *stage_id, *task_id)).unwrap(),
+            MetricChange::Remove { event_path } => -added.remove(&event_path).unwrap(),
+            MetricChange::None {} => 0.,
         };
 
         if points.is_empty() {
@@ -137,23 +162,35 @@ fn draw_utilization_graphs(args: &Args, trace: &Trace) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    if args.cpu_utilization {
+    if args.cpu_utilization || args.all {
         lines.push(Line {
             name: "CPU utilization".to_string(),
             color: BLUE.into(),
             data: collect_usage_graph(trace, args, |event| match event {
-                TraceEvent::TaskStarted { cores, .. } => *cores as f32 / total_cores as f32,
-                _ => unreachable!(),
+                TraceEvent::TaskStarted { cores, .. } => MetricChange::Add {
+                    event_path: event.task_path().unwrap(),
+                    value: *cores as f32 / total_cores as f32,
+                },
+                TraceEvent::TaskCompleted { .. } => MetricChange::Remove {
+                    event_path: event.task_path().unwrap(),
+                },
+                _ => MetricChange::None,
             }),
         });
     }
-    if args.memory_utilization {
+    if args.memory_utilization || args.all {
         lines.push(Line {
             name: "Memory utilization".to_string(),
             color: RED.into(),
             data: collect_usage_graph(trace, args, |event| match event {
-                TraceEvent::TaskStarted { memory, .. } => *memory as f32 / total_memory as f32,
-                _ => unreachable!(),
+                TraceEvent::TaskStarted { memory, .. } => MetricChange::Add {
+                    event_path: event.task_path().unwrap(),
+                    value: *memory as f32 / total_memory as f32,
+                },
+                TraceEvent::TaskCompleted { .. } => MetricChange::Remove {
+                    event_path: event.task_path().unwrap(),
+                },
+                _ => MetricChange::None,
             }),
         });
     }
@@ -240,22 +277,80 @@ fn draw_utilization_graphs(args: &Args, trace: &Trace) {
 }
 
 fn draw_running_tasks(args: &Args, trace: &Trace) {
-    let path = args.output.join("running_tasks.png");
+    let path = args.output.join("tasks.png");
     let root = BitMapBackend::new(&path, (args.width, args.height)).into_drawing_area();
     let _ = root.fill(&WHITE);
 
-    let line = Line {
-        name: "Running tasks".to_string(),
-        color: BLUE.into(),
-        data: collect_usage_graph(trace, args, |event| match event {
-            TraceEvent::TaskStarted { .. } => 1f32,
-            _ => unreachable!(),
-        }),
-    };
-    let maxy = line
-        .data
+    let mut lines: Vec<Line> = Vec::new();
+
+    if args.ready_tasks || args.all {
+        lines.push(Line {
+            name: "Ready tasks".to_string(),
+            color: BLUE.into(),
+            data: collect_usage_graph(trace, args, |event| match event {
+                TraceEvent::TaskReady { .. } => MetricChange::Add {
+                    event_path: event.task_path().unwrap(),
+                    value: 1f32,
+                },
+                TraceEvent::TaskInQueue { .. } => MetricChange::Remove {
+                    event_path: event.task_path().unwrap(),
+                },
+                _ => MetricChange::None,
+            }),
+        });
+    }
+    if args.queued_tasks || args.all {
+        lines.push(Line {
+            name: "Queued tasks".to_string(),
+            color: RED.into(),
+            data: collect_usage_graph(trace, args, |event| match event {
+                TraceEvent::TaskInQueue { .. } => MetricChange::Add {
+                    event_path: event.task_path().unwrap(),
+                    value: 1f32,
+                },
+                TraceEvent::TaskAssigned { .. } => MetricChange::Remove {
+                    event_path: event.task_path().unwrap(),
+                },
+                _ => MetricChange::None,
+            }),
+        });
+    }
+    if args.assigned_tasks || args.all {
+        lines.push(Line {
+            name: "Assigned tasks".to_string(),
+            color: GREEN.into(),
+            data: collect_usage_graph(trace, args, |event| match event {
+                TraceEvent::TaskAssigned { .. } => MetricChange::Add {
+                    event_path: event.task_path().unwrap(),
+                    value: 1f32,
+                },
+                TraceEvent::TaskStarted { .. } => MetricChange::Remove {
+                    event_path: event.task_path().unwrap(),
+                },
+                _ => MetricChange::None,
+            }),
+        });
+    }
+    if args.running_tasks || args.all {
+        lines.push(Line {
+            name: "Running tasks".to_string(),
+            color: BLACK.into(),
+            data: collect_usage_graph(trace, args, |event| match event {
+                TraceEvent::TaskStarted { .. } => MetricChange::Add {
+                    event_path: event.task_path().unwrap(),
+                    value: 1f32,
+                },
+                TraceEvent::TaskCompleted { .. } => MetricChange::Remove {
+                    event_path: event.task_path().unwrap(),
+                },
+                _ => MetricChange::None,
+            }),
+        });
+    }
+
+    let maxy = lines
         .iter()
-        .map(|&(_x, y)| y)
+        .flat_map(|line| line.data.iter().map(|(_x, y)| *y))
         .max_by(|a, b| a.total_cmp(b))
         .unwrap();
 
@@ -265,16 +360,20 @@ fn draw_running_tasks(args: &Args, trace: &Trace) {
         .y_label_area_size(40)
         .build_cartesian_2d(
             {
-                let mut range = line.data.iter().map(|event| event.0).fold(
-                    Range {
-                        start: f32::MAX,
-                        end: 0.0,
-                    },
-                    |range, time| Range {
-                        start: range.start.min(time),
-                        end: range.end.max(time),
-                    },
-                );
+                let mut range = lines
+                    .iter()
+                    .flat_map(|line| line.data.iter())
+                    .map(|event| event.0)
+                    .fold(
+                        Range {
+                            start: f32::MAX,
+                            end: 0.0,
+                        },
+                        |range, time| Range {
+                            start: range.start.min(time),
+                            end: range.end.max(time),
+                        },
+                    );
                 if let Some(from) = args.from {
                     range.start = from;
                 }
@@ -295,18 +394,114 @@ fn draw_running_tasks(args: &Args, trace: &Trace) {
         .draw()
         .unwrap();
 
+    for line in lines.into_iter() {
+        chart
+            .draw_series(LineSeries::new(
+                line.data,
+                ShapeStyle {
+                    color: line.color,
+                    filled: false,
+                    stroke_width: args.stroke_width,
+                },
+            ))
+            .unwrap()
+            .label(line.name)
+            .legend(move |(x, y)| Rectangle::new([(x - 10, y + 2), (x + 10, y - 2)], line.color.filled()));
+    }
+
     chart
-        .draw_series(LineSeries::new(
-            line.data,
-            ShapeStyle {
-                color: line.color,
-                filled: false,
-                stroke_width: args.stroke_width,
+        .configure_series_labels()
+        .position(SeriesLabelPosition::UpperRight)
+        .label_font(("sans-serif", args.font_size, &BLACK))
+        .margin(20)
+        .legend_area_size(25)
+        .border_style(BLUE)
+        .background_style(BLUE.mix(0.1))
+        .draw()
+        .unwrap();
+    root.present().unwrap();
+}
+
+fn draw_running_dags(args: &Args, trace: &Trace) {
+    let path = args.output.join("dags.png");
+    let root = BitMapBackend::new(&path, (args.width, args.height)).into_drawing_area();
+    let _ = root.fill(&WHITE);
+
+    let lines: Vec<Line> = vec![Line {
+        name: "Running DAGs".to_string(),
+        color: BLUE.into(),
+        data: collect_usage_graph(trace, args, |event| match event {
+            TraceEvent::DagStarted { dag_id, .. } => MetricChange::Add {
+                event_path: (*dag_id, 0, 0),
+                value: 1f32,
             },
-        ))
-        .unwrap()
-        .label(line.name)
-        .legend(move |(x, y)| Rectangle::new([(x - 10, y + 2), (x + 10, y - 2)], line.color.filled()));
+            TraceEvent::DagCompleted { dag_id, .. } => MetricChange::Remove {
+                event_path: (*dag_id, 0, 0),
+            },
+            _ => MetricChange::None,
+        }),
+    }];
+
+    let maxy = lines
+        .iter()
+        .flat_map(|line| line.data.iter().map(|(_x, y)| *y))
+        .max_by(|a, b| a.total_cmp(b))
+        .unwrap();
+
+    let root = root.margin(20, 20, 20, 20);
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(20)
+        .y_label_area_size(40)
+        .build_cartesian_2d(
+            {
+                let mut range = lines
+                    .iter()
+                    .flat_map(|line| line.data.iter())
+                    .map(|event| event.0)
+                    .fold(
+                        Range {
+                            start: f32::MAX,
+                            end: 0.0,
+                        },
+                        |range, time| Range {
+                            start: range.start.min(time),
+                            end: range.end.max(time),
+                        },
+                    );
+                if let Some(from) = args.from {
+                    range.start = from;
+                }
+                if let Some(to) = args.to {
+                    range.end = to;
+                }
+                range
+            },
+            0.0..maxy,
+        )
+        .unwrap();
+
+    chart
+        .configure_mesh()
+        .x_label_style(("sans-serif", args.font_size, &BLACK))
+        .y_label_style(("sans-serif", args.font_size, &BLACK))
+        .y_label_formatter(&|x: &f32| (x.round() as usize).to_string())
+        .draw()
+        .unwrap();
+
+    for line in lines.into_iter() {
+        chart
+            .draw_series(LineSeries::new(
+                line.data,
+                ShapeStyle {
+                    color: line.color,
+                    filled: false,
+                    stroke_width: args.stroke_width,
+                },
+            ))
+            .unwrap()
+            .label(line.name)
+            .legend(move |(x, y)| Rectangle::new([(x - 10, y + 2), (x + 10, y - 2)], line.color.filled()));
+    }
 
     chart
         .configure_series_labels()
@@ -327,10 +522,13 @@ fn main() {
         .expect("Can't parse trace file as json");
     std::fs::create_dir_all(&args.output).expect("Can't create output folder");
 
-    if args.cpu_utilization || args.memory_utilization {
+    if args.cpu_utilization || args.memory_utilization || args.all {
         draw_utilization_graphs(&args, &trace);
     }
-    if args.running_tasks {
+    if args.ready_tasks || args.queued_tasks || args.assigned_tasks || args.running_tasks || args.all {
         draw_running_tasks(&args, &trace);
+    }
+    if args.running_dags || args.all {
+        draw_running_dags(&args, &trace);
     }
 }

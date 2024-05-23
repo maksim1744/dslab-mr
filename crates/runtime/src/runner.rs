@@ -225,6 +225,13 @@ impl Runner {
                 task_id,
                 placement.host
             );
+            self.trace.log(TraceEvent::TaskInQueue {
+                time: self.ctx.time(),
+                dag_id,
+                stage_id,
+                task_id,
+                host: self.compute_hosts[&placement.host].name.clone(),
+            });
             let mut input = placement.input;
             if let Some(input_shuffled) = self
                 .stage_input_shuffled
@@ -296,6 +303,14 @@ impl Runner {
             },
         );
 
+        for task_id in 0..dag.stage(stage_id).tasks().len() {
+            self.trace.log(TraceEvent::TaskReady {
+                time: self.ctx.time(),
+                dag_id,
+                stage_id,
+                task_id,
+            });
+        }
         let actions = self.placement_strategy.on_stage_ready(
             dag_id,
             stage_id,
@@ -349,6 +364,13 @@ impl Runner {
             self.compute_hosts.get_mut(&host).unwrap().available_memory -= dag_task.memory();
             let task_id = self.task_queues.get_mut(&host).unwrap().pop_front().unwrap();
             let mut transfers = HashSet::new();
+            self.trace.log(TraceEvent::TaskAssigned {
+                time: self.ctx.time(),
+                dag_id: running_task.dag_id,
+                stage_id: running_task.stage_id,
+                task_id: running_task.task_id,
+                host: self.compute_hosts[&host].name.clone(),
+            });
             log_debug!(
                 self.ctx,
                 "starting task {}.{}.{} on host {}",
@@ -430,6 +452,10 @@ impl Runner {
         let dag = self.dags[dag_id].borrow();
         if dag.completed_stages().len() == dag.stages().len() {
             log_info!(self.ctx, "dag {} finished", dag_id);
+            self.trace.log(TraceEvent::DagCompleted {
+                time: self.ctx.time(),
+                dag_id,
+            });
             self.run_stats.register_dag(self.ctx.time() - self.dag_start[&dag_id]);
         }
         let running_stage = self.running_stages.remove(&(dag_id, stage_id)).unwrap();
@@ -544,6 +570,10 @@ impl EventHandler for Runner {
             NewDag { dag, initial_data } => {
                 log_debug!(self.ctx, "got new dag with {} stages", dag.borrow().stages().len());
                 let dag_id = self.dags.len();
+                self.trace.log(TraceEvent::DagStarted {
+                    time: self.ctx.time(),
+                    dag_id,
+                });
                 self.stage_input
                     .entry(dag_id)
                     .or_default()
