@@ -4,14 +4,14 @@
     fn <a href="#tymethod.shuffle" class="fn">shuffle</a>(
         &amp;self,
         input: &amp;[<a class="enum" href="../data_item/enum.DataItem.html" title="enum dslab_mr::data_item::DataItem">DataItem</a>],
-        dfs: &amp;<a class="struct" href="../../dslab_dfs/dfs/struct.DistributedFileSystem.html" title="struct dslab_dfs::dfs::DistributedFileSystem">DistributedFileSystem</a>,
+        dfs: &amp;DistributedFileSystem,
         output_tasks: <a class="primitive" href="https://doc.rust-lang.org/1.78.0/std/primitive.usize.html">usize</a>
     ) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.78.0/alloc/vec/struct.Vec.html" title="struct alloc::vec::Vec">Vec</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.78.0/alloc/vec/struct.Vec.html" title="struct alloc::vec::Vec">Vec</a>&lt;<a class="enum" href="../data_item/enum.DataItem.html" title="enum dslab_mr::data_item::DataItem">DataItem</a>&gt;&gt;;
 }</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Trait which represents shuffle edge.</p>
 </div></details><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="tymethod.shuffle" class="method"><a class="src rightside" href="../../src/dslab_mr/dag.rs.html#108">source</a><h4 class="code-header">fn <a href="#tymethod.shuffle" class="fn">shuffle</a>(
     &amp;self,
     input: &amp;[<a class="enum" href="../data_item/enum.DataItem.html" title="enum dslab_mr::data_item::DataItem">DataItem</a>],
-    dfs: &amp;<a class="struct" href="../../dslab_dfs/dfs/struct.DistributedFileSystem.html" title="struct dslab_dfs::dfs::DistributedFileSystem">DistributedFileSystem</a>,
+    dfs: &amp;DistributedFileSystem,
     output_tasks: <a class="primitive" href="https://doc.rust-lang.org/1.78.0/std/primitive.usize.html">usize</a>
 ) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.78.0/alloc/vec/struct.Vec.html" title="struct alloc::vec::Vec">Vec</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.78.0/alloc/vec/struct.Vec.html" title="struct alloc::vec::Vec">Vec</a>&lt;<a class="enum" href="../data_item/enum.DataItem.html" title="enum dslab_mr::data_item::DataItem">DataItem</a>&gt;&gt;</h4></section></summary><div class="docblock"><p>Gets input data for a stage and returns vector of size <code>output_tasks</code> with all input split into <code>output_tasks</code> parts.</p>
 </div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"><section id="impl-Shuffle-for-UniformShuffle" class="impl"><a class="src rightside" href="../../src/dslab_mr/dag.rs.html#117-147">source</a><a href="#impl-Shuffle-for-UniformShuffle" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.Shuffle.html" title="trait dslab_mr::dag::Shuffle">Shuffle</a> for <a class="struct" href="struct.UniformShuffle.html" title="struct dslab_mr::dag::UniformShuffle">UniformShuffle</a></h3></section></div><script src="../../trait.impl/dslab_mr/dag/trait.Shuffle.js" async></script></section></div></main></body></html>
