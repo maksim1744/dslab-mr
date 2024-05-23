@@ -306,13 +306,22 @@ impl ClusterSimulation {
                 star_count,
                 hosts_per_star,
                 downlink_bw,
+                uplink_bw,
                 internal_bw,
-            } => make_tree_topology(&mut self.sim, star_count, hosts_per_star, downlink_bw, internal_bw),
+            } => make_tree_topology(
+                &mut self.sim,
+                star_count,
+                hosts_per_star,
+                downlink_bw,
+                uplink_bw,
+                internal_bw,
+            ),
             NetworkConfig::FatTree {
                 l2_switch_count,
                 l1_switch_count,
                 hosts_per_switch,
                 downlink_bw,
+                uplink_bw,
                 internal_bw,
             } => make_fat_tree_topology(
                 &mut self.sim,
@@ -320,6 +329,7 @@ impl ClusterSimulation {
                 l1_switch_count,
                 hosts_per_switch,
                 downlink_bw,
+                uplink_bw,
                 internal_bw,
             ),
         };

@@ -4,6 +4,7 @@ network:
   l1_switch_count: 4
   hosts_per_switch: 8
   downlink_bw: 32
+  uplink_bw: 64
   internal_bw: 1000
 chunk_size: 24
 hosts:

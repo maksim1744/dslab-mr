@@ -3,6 +3,7 @@ network:
   star_count: 4
   hosts_per_star: 8
   downlink_bw: 32
+  uplink_bw: 256
   internal_bw: 1000
 chunk_size: 16
 hosts:

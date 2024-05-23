@@ -10,12 +10,14 @@ use dslab_network::{Link, Network, NodeId};
 
 /// Creates tree topology with `star_count` racks and `hosts_per_star` hosts on each one.
 /// * `downlink_bw` corresponds to a link bandwidth between rack switch and each host.
+/// * `uplink_bw` corresponds to a link bandwidth between rack switch and root switch.
 /// * `internal_bw` corresponds to an internal bandwidth of each host.
 pub fn make_tree_topology(
     sim: &mut Simulation,
     star_count: usize,
     hosts_per_star: usize,
     downlink_bw: f64,
+    uplink_bw: f64,
     internal_bw: f64,
 ) -> Rc<RefCell<Network>> {
     let mut network = Network::new(Box::new(TopologyAwareNetworkModel::new()), sim.create_context("net"));
@@ -32,11 +34,7 @@ pub fn make_tree_topology(
             &switch_name,
             Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
         );
-        network.add_link(
-            &root_switch_name,
-            &switch_name,
-            Link::shared(downlink_bw * hosts_per_star as f64, 1e-4),
-        );
+        network.add_link(&root_switch_name, &switch_name, Link::shared(uplink_bw, 1e-4));
 
         for j in 0..hosts_per_star {
             let host_name = format!("host_{}_{}", i, j);
@@ -59,6 +57,7 @@ pub fn make_tree_topology(
 /// * `l1_switch_count` --- number of racks.
 /// * `hosts_per_switch` --- number of hosts per rack.
 /// * `downlink_bw` --- link bandwidth between rack switch and each host.
+/// * `uplink_bw` --- link bandwidth between rack switch and one top-level switch.
 /// * `internal_bw` --- internal bandwidth of each host.
 pub fn make_fat_tree_topology(
     sim: &mut Simulation,
@@ -66,6 +65,7 @@ pub fn make_fat_tree_topology(
     l1_switch_count: usize,
     hosts_per_switch: usize,
     downlink_bw: f64,
+    uplink_bw: f64,
     internal_bw: f64,
 ) -> Rc<RefCell<Network>> {
     let mut network = Network::new(Box::new(TopologyAwareNetworkModel::new()), sim.create_context("net"));
@@ -77,8 +77,6 @@ pub fn make_fat_tree_topology(
             Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
         );
     }
-
-    let uplink_bw = downlink_bw * hosts_per_switch as f64 / l2_switch_count as f64;
 
     for i in 0..l1_switch_count {
         let switch_name = format!("l1_switch_{}", i);

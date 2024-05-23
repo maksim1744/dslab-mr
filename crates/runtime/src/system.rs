@@ -11,6 +11,7 @@ pub enum NetworkConfig {
         star_count: usize,
         hosts_per_star: usize,
         downlink_bw: f64,
+        uplink_bw: f64,
         internal_bw: f64,
     },
     /// Represents fat tree network, see [make_fat_tree_topology](dslab_dfs::network::make_fat_tree_topology).
@@ -19,6 +20,7 @@ pub enum NetworkConfig {
         l1_switch_count: usize,
         hosts_per_switch: usize,
         downlink_bw: f64,
+        uplink_bw: f64,
         internal_bw: f64,
     },
 }
