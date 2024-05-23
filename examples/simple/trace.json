@@ -45,20 +45,151 @@
   ],
   "events": [
     {
+      "type": "DagStarted",
+      "time": 0.4162,
+      "dag_id": 0
+    },
+    {
+      "type": "TaskReady",
+      "time": 0.4162,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 0
+    },
+    {
+      "type": "TaskReady",
+      "time": 0.4162,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 1
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 0.4162,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 0,
+      "host": "host_2_1"
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 0.4162,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 1,
+      "host": "host_2_1"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 0.4162,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 0,
+      "host": "host_2_1"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 0.4162,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 1,
+      "host": "host_2_1"
+    },
+    {
       "type": "TaskStarted",
-      "time": 0.5438999999999998,
+      "time": 0.5924,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 0,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_2_1"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 0.5924,
       "dag_id": 0,
       "stage_id": 0,
       "task_id": 1,
       "cores": 1,
       "memory": 512,
-      "host": "host_0_1"
+      "host": "host_2_1"
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 38400.5924,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 0
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 44800.5924,
+      "dag_id": 0,
+      "stage_id": 0,
+      "task_id": 1
+    },
+    {
+      "type": "TaskReady",
+      "time": 44800.5924,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 0
+    },
+    {
+      "type": "TaskReady",
+      "time": 44800.5924,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 1
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 44800.5924,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 0,
+      "host": "host_0_0"
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 44800.5924,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 1,
+      "host": "host_2_1"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 44800.5924,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 0,
+      "host": "host_0_0"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 44800.5924,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 1,
+      "host": "host_2_1"
     },
     {
       "type": "TaskStarted",
-      "time": 0.5444,
+      "time": 44800.59368,
       "dag_id": 0,
-      "stage_id": 0,
+      "stage_id": 1,
+      "task_id": 1,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_2_1"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 44800.8488,
+      "dag_id": 0,
+      "stage_id": 1,
       "task_id": 0,
       "cores": 1,
       "memory": 512,
@@ -66,119 +197,192 @@
     },
     {
       "type": "TaskCompleted",
-      "time": 38400.5444,
+      "time": 70400.8488,
       "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 0
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 72960.59367999999,
+      "dag_id": 0,
+      "stage_id": 1,
+      "task_id": 1
+    },
+    {
+      "type": "DagCompleted",
+      "time": 72960.64187999998,
+      "dag_id": 0
+    },
+    {
+      "type": "DagStarted",
+      "time": 100000.88040000001,
+      "dag_id": 1
+    },
+    {
+      "type": "TaskReady",
+      "time": 100000.88040000001,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 0
+    },
+    {
+      "type": "TaskReady",
+      "time": 100000.88040000001,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 1
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 100000.88040000001,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 0,
+      "host": "host_1_0"
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 100000.88040000001,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 1,
+      "host": "host_1_1"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 100000.88040000001,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 0,
+      "host": "host_1_0"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 100000.88040000001,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 1,
+      "host": "host_1_1"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 100000.9926,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 0,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_1_0"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 100000.9926,
+      "dag_id": 1,
+      "stage_id": 0,
+      "task_id": 1,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_1_1"
+    },
+    {
+      "type": "TaskCompleted",
+      "time": 138400.9926,
+      "dag_id": 1,
       "stage_id": 0,
       "task_id": 0
     },
     {
       "type": "TaskCompleted",
-      "time": 44800.5439,
-      "dag_id": 0,
+      "time": 144800.9926,
+      "dag_id": 1,
       "stage_id": 0,
       "task_id": 1
     },
     {
-      "type": "TaskStarted",
-      "time": 44800.8001,
-      "dag_id": 0,
+      "type": "TaskReady",
+      "time": 144800.9926,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 0
+    },
+    {
+      "type": "TaskReady",
+      "time": 144800.9926,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 1
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 144800.9926,
+      "dag_id": 1,
       "stage_id": 1,
       "task_id": 0,
-      "cores": 1,
-      "memory": 512,
-      "host": "host_0_0"
+      "host": "host_0_1"
+    },
+    {
+      "type": "TaskInQueue",
+      "time": 144800.9926,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 1,
+      "host": "host_1_0"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 144800.9926,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 0,
+      "host": "host_0_1"
+    },
+    {
+      "type": "TaskAssigned",
+      "time": 144800.9926,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 1,
+      "host": "host_1_0"
     },
     {
       "type": "TaskStarted",
-      "time": 44800.8001,
-      "dag_id": 0,
+      "time": 144801.24860000002,
+      "dag_id": 1,
       "stage_id": 1,
       "task_id": 1,
+      "cores": 1,
+      "memory": 512,
+      "host": "host_1_0"
+    },
+    {
+      "type": "TaskStarted",
+      "time": 144801.24899999998,
+      "dag_id": 1,
+      "stage_id": 1,
+      "task_id": 0,
       "cores": 1,
       "memory": 512,
       "host": "host_0_1"
     },
     {
       "type": "TaskCompleted",
-      "time": 70400.8001,
-      "dag_id": 0,
-      "stage_id": 1,
-      "task_id": 0
-    },
-    {
-      "type": "TaskCompleted",
-      "time": 72960.8001,
-      "dag_id": 0,
-      "stage_id": 1,
-      "task_id": 1
-    },
-    {
-      "type": "TaskStarted",
-      "time": 100001.00819999997,
-      "dag_id": 1,
-      "stage_id": 0,
-      "task_id": 1,
-      "cores": 1,
-      "memory": 512,
-      "host": "host_0_1"
-    },
-    {
-      "type": "TaskStarted",
-      "time": 100001.00859999999,
-      "dag_id": 1,
-      "stage_id": 0,
-      "task_id": 0,
-      "cores": 1,
-      "memory": 512,
-      "host": "host_0_0"
-    },
-    {
-      "type": "TaskCompleted",
-      "time": 138401.0086,
-      "dag_id": 1,
-      "stage_id": 0,
-      "task_id": 0
-    },
-    {
-      "type": "TaskCompleted",
-      "time": 144801.00819999998,
-      "dag_id": 1,
-      "stage_id": 0,
-      "task_id": 1
-    },
-    {
-      "type": "TaskStarted",
-      "time": 144801.2644,
-      "dag_id": 1,
-      "stage_id": 1,
-      "task_id": 0,
-      "cores": 1,
-      "memory": 512,
-      "host": "host_0_0"
-    },
-    {
-      "type": "TaskStarted",
-      "time": 144801.2644,
-      "dag_id": 1,
-      "stage_id": 1,
-      "task_id": 1,
-      "cores": 1,
-      "memory": 512,
-      "host": "host_0_1"
-    },
-    {
-      "type": "TaskCompleted",
-      "time": 170401.2644,
+      "time": 170401.24899999998,
       "dag_id": 1,
       "stage_id": 1,
       "task_id": 0
     },
     {
       "type": "TaskCompleted",
-      "time": 172961.2644,
+      "time": 172961.24860000002,
       "dag_id": 1,
       "stage_id": 1,
       "task_id": 1
+    },
+    {
+      "type": "DagCompleted",
+      "time": 172961.29680000004,
+      "dag_id": 1
     }
   ]
 }

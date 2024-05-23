@@ -1,3 +1,5 @@
+#![doc = include_str!("../../../README.md")]
+
 pub mod cluster_simulation;
 pub mod compute_host;
 pub mod dag;

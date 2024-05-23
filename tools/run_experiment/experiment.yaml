@@ -1,8 +1,8 @@
 plans:
-- plan_path: ../../alibaba/parsed_2/plan.yaml
-  dags_path: ../../alibaba/parsed_2/dags
-- plan_path: ../../alibaba/parsed_3/plan.yaml
-  dags_path: ../../alibaba/parsed_3/dags
+- plan_path: ../../alibaba/experiment_plan_1/plan.yaml
+  dags_path: ../../alibaba/experiment_plan_1/dags
+- plan_path: ../../alibaba/experiment_plan_2/plan.yaml
+  dags_path: ../../alibaba/experiment_plan_2/dags
 systems:
 - systems/tree.yaml
 - systems/fat_tree.yaml
