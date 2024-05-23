@@ -1,0 +1,13 @@
+network:
+  type: Constant
+  racks: 100
+  hosts_per_rack: 100
+  bandwidth: 1024
+  internal_bw: 1000
+chunk_size: 128
+hosts:
+- name: default
+  speed: 5
+  available_space: 1024000
+  available_cores: 8
+  available_memory: 128000

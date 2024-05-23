@@ -6,6 +6,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum NetworkConfig {
+    /// Represents constant bandwidth network, see [make_constant_network](dslab_dfs::network::make_constant_network).
+    Constant {
+        racks: usize,
+        hosts_per_rack: usize,
+        bandwidth: f64,
+        internal_bw: f64,
+    },
+    /// Represents shared bandwidth network, see [make_shared_network](dslab_dfs::network::make_shared_network).
+    Shared {
+        racks: usize,
+        hosts_per_rack: usize,
+        bandwidth: f64,
+        internal_bw: f64,
+    },
     /// Represents tree network, see [make_tree_topology](dslab_dfs::network::make_tree_topology).
     Tree {
         star_count: usize,

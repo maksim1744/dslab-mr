@@ -14,7 +14,7 @@ use dslab_core::{cast, log_info, Event, EventHandler, Id, Simulation, Simulation
 use dslab_dfs::{
     dfs::{DistributedFileSystem, RegisterData, RegisteredData},
     host_info::HostInfo,
-    network::{make_fat_tree_topology, make_tree_topology},
+    network::{make_constant_network, make_fat_tree_topology, make_shared_network, make_tree_topology},
     replication_strategy::ReplicationStrategy,
 };
 use serde::{Deserialize, Serialize};
@@ -302,6 +302,18 @@ impl ClusterSimulation {
     /// Runs simulation and returns results.
     pub fn run(mut self) -> RunStats {
         let network = match self.system_config.network {
+            NetworkConfig::Constant {
+                racks,
+                hosts_per_rack,
+                bandwidth,
+                internal_bw,
+            } => make_constant_network(&mut self.sim, racks, hosts_per_rack, bandwidth, internal_bw),
+            NetworkConfig::Shared {
+                racks,
+                hosts_per_rack,
+                bandwidth,
+                internal_bw,
+            } => make_shared_network(&mut self.sim, racks, hosts_per_rack, bandwidth, internal_bw),
             NetworkConfig::Tree {
                 star_count,
                 hosts_per_star,

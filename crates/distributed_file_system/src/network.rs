@@ -5,8 +5,64 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use dslab_core::{Id, Simulation};
-use dslab_network::models::{ConstantBandwidthNetworkModel, TopologyAwareNetworkModel};
+use dslab_network::models::{ConstantBandwidthNetworkModel, SharedBandwidthNetworkModel, TopologyAwareNetworkModel};
 use dslab_network::{Link, Network, NodeId};
+
+/// Creates [constant bandwidth](ConstantBandwidthNetworkModel) network with given bandwidth.
+pub fn make_constant_network(
+    sim: &mut Simulation,
+    racks: usize,
+    hosts_per_rack: usize,
+    bandwidth: f64,
+    internal_bw: f64,
+) -> Rc<RefCell<Network>> {
+    let mut network = Network::new(
+        Box::new(ConstantBandwidthNetworkModel::new(bandwidth, 1e-4)),
+        sim.create_context("net"),
+    );
+
+    for i in 0..racks {
+        for j in 0..hosts_per_rack {
+            let host_name = format!("host_{}_{}", i, j);
+            network.add_node(
+                &host_name,
+                Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
+            );
+        }
+    }
+
+    let network_rc = Rc::new(RefCell::new(network));
+    sim.add_handler("net", network_rc.clone());
+    network_rc
+}
+
+/// Creates [shared bandwidth](SharedBandwidthNetworkModel) network with given bandwidth.
+pub fn make_shared_network(
+    sim: &mut Simulation,
+    racks: usize,
+    hosts_per_rack: usize,
+    bandwidth: f64,
+    internal_bw: f64,
+) -> Rc<RefCell<Network>> {
+    let mut network = Network::new(
+        Box::new(SharedBandwidthNetworkModel::new(bandwidth, 1e-4)),
+        sim.create_context("net"),
+    );
+
+    for i in 0..racks {
+        for j in 0..hosts_per_rack {
+            let host_name = format!("host_{}_{}", i, j);
+            network.add_node(
+                &host_name,
+                Box::new(ConstantBandwidthNetworkModel::new(internal_bw, 0.)),
+            );
+        }
+    }
+
+    let network_rc = Rc::new(RefCell::new(network));
+    sim.add_handler("net", network_rc.clone());
+    network_rc
+}
 
 /// Creates tree topology with `star_count` racks and `hosts_per_star` hosts on each one.
 /// * `downlink_bw` corresponds to a link bandwidth between rack switch and each host.
