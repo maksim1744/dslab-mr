@@ -440,6 +440,28 @@
 <a href="#438" id="438">438</a>
 <a href="#439" id="439">439</a>
 <a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
+<a href="#442" id="442">442</a>
+<a href="#443" id="443">443</a>
+<a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+<a href="#451" id="451">451</a>
+<a href="#452" id="452">452</a>
+<a href="#453" id="453">453</a>
+<a href="#454" id="454">454</a>
+<a href="#455" id="455">455</a>
+<a href="#456" id="456">456</a>
+<a href="#457" id="457">457</a>
+<a href="#458" id="458">458</a>
+<a href="#459" id="459">459</a>
+<a href="#460" id="460">460</a>
+<a href="#461" id="461">461</a>
+<a href="#462" id="462">462</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! Simulation wrapper to simplify running cluster simulations.
 
 </span><span class="kw">use </span>std::{
@@ -456,7 +478,7 @@
 <span class="kw">use </span>dslab_dfs::{
     dfs::{DistributedFileSystem, RegisterData, RegisteredData},
     host_info::HostInfo,
-    network::{make_fat_tree_topology, make_tree_topology},
+    network::{make_constant_network, make_fat_tree_topology, make_shared_network, make_tree_topology},
     replication_strategy::ReplicationStrategy,
 };
 <span class="kw">use </span>serde::{Deserialize, Serialize};
@@ -744,17 +766,38 @@
     <span class="doccomment">/// Runs simulation and returns results.
     </span><span class="kw">pub fn </span>run(<span class="kw-2">mut </span><span class="self">self</span>) -&gt; RunStats {
         <span class="kw">let </span>network = <span class="kw">match </span><span class="self">self</span>.system_config.network {
+            NetworkConfig::Constant {
+                racks,
+                hosts_per_rack,
+                bandwidth,
+                internal_bw,
+            } =&gt; make_constant_network(<span class="kw-2">&amp;mut </span><span class="self">self</span>.sim, racks, hosts_per_rack, bandwidth, internal_bw),
+            NetworkConfig::Shared {
+                racks,
+                hosts_per_rack,
+                bandwidth,
+                internal_bw,
+            } =&gt; make_shared_network(<span class="kw-2">&amp;mut </span><span class="self">self</span>.sim, racks, hosts_per_rack, bandwidth, internal_bw),
             NetworkConfig::Tree {
                 star_count,
                 hosts_per_star,
                 downlink_bw,
+                uplink_bw,
                 internal_bw,
-            } =&gt; make_tree_topology(<span class="kw-2">&amp;mut </span><span class="self">self</span>.sim, star_count, hosts_per_star, downlink_bw, internal_bw),
+            } =&gt; make_tree_topology(
+                <span class="kw-2">&amp;mut </span><span class="self">self</span>.sim,
+                star_count,
+                hosts_per_star,
+                downlink_bw,
+                uplink_bw,
+                internal_bw,
+            ),
             NetworkConfig::FatTree {
                 l2_switch_count,
                 l1_switch_count,
                 hosts_per_switch,
                 downlink_bw,
+                uplink_bw,
                 internal_bw,
             } =&gt; make_fat_tree_topology(
                 <span class="kw-2">&amp;mut </span><span class="self">self</span>.sim,
@@ -762,6 +805,7 @@
                 l1_switch_count,
                 hosts_per_switch,
                 downlink_bw,
+                uplink_bw,
                 internal_bw,
             ),
         };

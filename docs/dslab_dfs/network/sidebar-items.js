@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["get_all_racks","get_rack","make_fat_tree_topology","make_tree_topology"]};
+window.SIDEBAR_ITEMS = {"fn":["get_all_racks","get_rack","make_constant_network","make_fat_tree_topology","make_shared_network","make_tree_topology"]};
