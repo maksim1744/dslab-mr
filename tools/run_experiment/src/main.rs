@@ -119,6 +119,7 @@ struct ResultRow {
     name: String,
     avg_slowdown: f64,
     max_slowdown: f64,
+    avg_total_slowdown: f64,
     r2r_traffic: f64,
     h2h_traffic: f64,
 }
@@ -169,25 +170,35 @@ fn main() {
         result
     };
 
-    let mut best_placement_algs: HashMap<(String, String, String), Vec<(f64, String)>> = HashMap::new();
+    type ExperimentSetup = (String, String, String);
+    let mut best_placement_algs: HashMap<ExperimentSetup, Vec<(String, RunStats)>> = HashMap::new();
     let mut alg_runs: HashMap<String, Vec<RunStats>> = HashMap::new();
     for run in result.into_iter() {
         best_placement_algs
             .entry((run.plan.clone(), run.system.clone(), run.replication_strategy.clone()))
             .or_default()
-            .push((run.run_stats.average_dag_makespan, run.placement_strategy.clone()));
+            .push((run.placement_strategy.clone(), run.run_stats.clone()));
         alg_runs
             .entry(run.placement_strategy.clone())
             .or_default()
             .push(run.run_stats);
     }
 
-    let mut places: BTreeMap<String, Vec<(usize, f64)>> = BTreeMap::new();
+    let mut places: BTreeMap<String, Vec<(usize, f64, f64)>> = BTreeMap::new();
     for (_key, mut values) in best_placement_algs.into_iter() {
-        values.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let best_makespan = values[0].0;
-        for (i, (makespan, alg)) in values.into_iter().enumerate() {
-            places.entry(alg).or_default().push((i + 1, makespan / best_makespan));
+        values.sort_by(|a, b| a.1.average_dag_makespan.total_cmp(&b.1.average_dag_makespan));
+        let best_makespan = values[0].1.average_dag_makespan;
+        let best_total_makespan = values
+            .iter()
+            .map(|v| v.1.total_makespan)
+            .min_by(|a, b| a.total_cmp(b))
+            .unwrap();
+        for (i, (alg, run_stats)) in values.into_iter().enumerate() {
+            places.entry(alg).or_default().push((
+                i + 1,
+                run_stats.average_dag_makespan / best_makespan,
+                run_stats.total_makespan / best_total_makespan,
+            ));
         }
     }
 
@@ -197,6 +208,7 @@ fn main() {
             name: alg.clone(),
             avg_slowdown: places.iter().map(|x| x.1).sum::<f64>() / places.len() as f64,
             max_slowdown: places.iter().map(|x| x.1).max_by(|a, b| a.total_cmp(b)).unwrap(),
+            avg_total_slowdown: places.iter().map(|x| x.2).sum::<f64>() / places.len() as f64,
             r2r_traffic: alg_runs[&alg]
                 .iter()
                 .map(|run| run.network_traffic_between_racks / run.total_network_traffic * 100.)
@@ -214,21 +226,22 @@ fn main() {
 
     let width = result.iter().map(|x| x.name.len()).max().unwrap();
     println!(
-        "| {: <width$} | avg slowdown | max slowdown | r2r traffic | h2h traffic |",
+        "| {: <width$} | avg slowdown | max slowdown | avg total slowdown | r2r traffic | h2h traffic |",
         "algorithm",
         width = width
     );
     println!(
-        "|-{:-<width$}-|--------------|--------------|-------------|-------------|",
+        "|-{:-<width$}-|--------------|--------------|--------------------|-------------|-------------|",
         "",
         width = width
     );
     for row in result.into_iter() {
         println!(
-            "| {: <width$} | {: >12.3} | {: >12.3} | {: >10.2}% | {: >10.2}% |",
+            "| {: <width$} | {: >12.3} | {: >12.3} | {: >18.3} | {: >10.2}% | {: >10.2}% |",
             row.name,
             row.avg_slowdown,
             row.max_slowdown,
+            row.avg_total_slowdown,
             row.r2r_traffic,
             row.h2h_traffic,
             width = width
