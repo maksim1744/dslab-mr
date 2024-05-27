@@ -20,3 +20,8 @@ cargo run --release -- -s 200100 -e 200200 -t ../../alibaba -o ../../alibaba/exp
 ```sh
 cargo run --release -- -s 200100 -e 200150 -t ../../alibaba -o ../../alibaba/graph_plan --min-tasks-in-job 1 --initial-data-size-from 0.5 --initial-data-size-to 1 --flops-per-byte-from 0.25 --flops-per-byte-to 0.5 --cpu-multiplier 8 --mem-multiplier 12800000 --instances-multiplier-from 40 --instances-multiplier-to 40
 ```
+
+### benchmark_plan
+```sh
+cargo run --release -- -s 200100 -e 200150 -t ../../alibaba -o ../../alibaba/benchmark_plan --min-tasks-in-job 1 --initial-data-size-from 0.5 --initial-data-size-to 1 --flops-per-byte-from 0.25 --flops-per-byte-to 0.5 --cpu-multiplier 8 --mem-multiplier 12800000 --instances-multiplier-from 500 --instances-multiplier-to 500
+```

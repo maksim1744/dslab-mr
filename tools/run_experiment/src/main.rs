@@ -224,7 +224,7 @@ fn main() {
 
     result.sort_by(|a, b| a.avg_slowdown.total_cmp(&b.avg_slowdown).then(a.name.cmp(&b.name)));
 
-    let width = result.iter().map(|x| x.name.len()).max().unwrap();
+    let width = result.iter().map(|x| x.name.len()).max().unwrap().max(9);
     println!(
         "| {: <width$} | avg slowdown | max slowdown | avg total slowdown | r2r traffic | h2h traffic |",
         "algorithm",

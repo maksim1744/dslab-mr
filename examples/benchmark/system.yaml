@@ -1,7 +1,7 @@
 network:
   type: Constant
-  racks: 100
-  hosts_per_rack: 100
+  racks: 500
+  hosts_per_rack: 20
   bandwidth: 1024
   internal_bw: 1000
 chunk_size: 128

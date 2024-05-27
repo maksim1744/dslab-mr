@@ -1,3 +1,10 @@
 [workspace]
-members = ["crates/*", "examples/*", "tools/alibaba_parser", "tools/run_experiment", "tools/trace_graphs"]
+members = [
+    "crates/*",
+    "examples/*",
+    "tools/alibaba_parser",
+    "tools/run_experiment",
+    "tools/trace_graphs",
+]
+exclude = ["examples/benchmark_2"]
 resolver = "2"
